@@ -29,8 +29,14 @@ async function fetchPostByUrl(url) {
       "Accept-Language": "en-US,en;q=0.9"
     },
   });
-  if (!res.ok) throw new Error(`Reddit fetch failed: ${res.status}`);
-  const data = await res.json();
+  if (!res.ok) throw new Error(`Reddit fetch failed for ${jsonUrl}: HTTP ${res.status}`);
+  const bodyText = await res.text();
+  let data;
+  try {
+    data = JSON.parse(bodyText);
+  } catch {
+    throw new Error(`Reddit fetch failed for ${jsonUrl}: HTTP ${res.status} returned non-JSON body (${bodyText.slice(0, 200)})`);
+  }
   if (Array.isArray(data) && data.length > 0) {
     const children = data[0]?.data?.children || [];
     if (children.length > 0) return children[0].data;
@@ -46,8 +52,14 @@ async function fetchSubredditPosts(subreddit, limit = 50) {
       "Accept": "application/json",
     },
   });
-  if (!res.ok) throw new Error(`Reddit fetch failed: ${res.status}`);
-  const data = await res.json();
+  if (!res.ok) throw new Error(`Reddit fetch failed for ${url}: HTTP ${res.status}`);
+  const bodyText = await res.text();
+  let data;
+  try {
+    data = JSON.parse(bodyText);
+  } catch {
+    throw new Error(`Reddit fetch failed for ${url}: HTTP ${res.status} returned non-JSON body (${bodyText.slice(0, 200)})`);
+  }
   return data?.data?.children?.map((c) => c.data) ?? [];
 }
 
@@ -70,8 +82,9 @@ async function callAI(prompt) {
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`OpenRouter error ${res.status}: ${err}`);
+    const err = await res.text().catch(() => "");
+    console.error(`OpenRouter API error HTTP ${res.status}: ${err.slice(0, 500)}`);
+    throw new Error(`OpenRouter API call failed: HTTP ${res.status}`);
   }
 
   const data = await res.json();

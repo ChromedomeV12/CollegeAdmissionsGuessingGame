@@ -1,80 +1,70 @@
 # Admissions Oracle
 
-A React-based college admissions guessing game where players evaluate real high school applicant profiles and guess their admissions results across different university tiers.
+A React-based college admissions guessing game. Players read real high school applicant profiles (scraped from r/collegeresults) and predict admissions outcomes across university tiers, competing on a global leaderboard.
 
-## Project Overview
+## Architecture
 
-This project was built to simulate the difficult, often unpredictable nature of college admissions. It features a completely custom frontend powered by React, a hybrid flat-file and SQLite backend, and an intelligent data scraping pipeline that leverages LLMs to turn unstructured Reddit posts into playable game scenarios.
+1. **Frontend (`public/`)** — React SPA, no build step: JSX is compiled in the browser by `@babel/standalone`. Four game phases (Profile → Tier → Schools → Reveal) plus auth and leaderboard screens. State lives client-side; scores sync to the backend.
+2. **Backend (`server.js`)** — Express. Serves `public/` statically and exposes the JSON API under `/api/*` (unknown `/api` paths return 404 JSON, not the SPA). JWT sessions (`jsonwebtoken`), bcrypt password hashing (`bcryptjs`).
+3. **Storage (hybrid)**:
+   - `data/profiles.jsonl` — static game content. Read-only to the server, loaded into memory at startup. Replace the file to update content.
+   - `data/game.db` — SQLite (`better-sqlite3`, WAL) for `users` and `scores`. Powers persistence and the leaderboard.
 
-### Architecture
+### API surface
 
-The project employs a hybrid data architecture designed to cleanly separate static game content from dynamic player state:
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/api/register` | — | `{username, password}` → `{token, username, scores}`. Username `^[a-zA-Z0-9_]{3,20}$`, password 8–72 chars. |
+| POST | `/api/login` | — | Same shape as register. |
+| GET | `/api/me` | Bearer | Session check + score history. |
+| GET | `/api/profiles` | — | All playable profiles. |
+| GET | `/api/profiles/:id` | — | One profile (full detail, fetched when tiers lock). |
+| POST | `/api/scores` | Bearer | `{profile_id, score, breakdown}` — keeps the higher score per (user, profile). |
+| GET | `/api/leaderboard` | — | `[{username, games, total}]`. |
+| GET | `/api/stats` | — | Aggregate play stats. |
 
-1. **Frontend (React)**: 
-   - A single-page application (SPA) living in `/public`. 
-   - It runs completely in the browser via Babel standalone (no build step needed for the MVP). 
-   - It features 4 primary phases (Profile Viewer, Tier Selection, School Selection, and Results Reveal) and manages its state internally before syncing scores to the backend.
+## Scoring
 
-2. **Backend (Express Node.js)**:
-   - Lives in `server.js`.
-   - Serves the static React frontend.
-   - Provides a REST API for user authentication, fetching profiles, and submitting/retrieving scores.
-   - Uses `jsonwebtoken` for secure stateless sessions and `bcryptjs` for password hashing.
+- `+10` correct school, `−2` wrong school *(only if the tier band was a hit)*
+- `+10` correct University tier band, `+10` correct LAC tier band
+- `−5` per tier band that contained none of the admits
+- "No LAC admit" claim scored explicitly: `+10` correct / `−5` wrong (waives standard LAC penalties)
 
-3. **Data Storage**:
-   - **Static Content (`data/profiles.jsonl`)**: The college applicant profiles. This is a flat JSONL file. To the game server, this is read-only. It is loaded into memory on startup. This allows for extremely easy updates (just replace the file).
-   - **Player State (`data/game.db`)**: A robust SQLite database (`better-sqlite3`) that securely manages user accounts, password hashes, and user scores across different profiles. It also enables the real-time global leaderboard calculations.
+## Local setup
 
-### Data Scraping Pipeline
+```bash
+npm install
+cp .env.example .env   # then edit: set JWT_SECRET (generation one-liner inside)
+npm run dev            # http://localhost:3005
+```
 
-Because college admissions data is highly unstructured, the project includes an intelligent scraping toolkit in `scripts/scrape.js` that pulls data directly from r/collegeresults.
+`.env` keys: `PORT`, `JWT_SECRET` (server; a startup warning fires if unset), `OPENROUTER_API_KEY` (scraper only).
 
-**Workflow:**
-1. **Scraping**: `npm run scrape [--url <specific-reddit-url>]` fetches the raw post data using the unofficial `.json` endpoint (bypassing the need for PRAW/API keys for now).
-2. **LLM Filtering & Extraction**: The raw text is passed to an LLM (currently configured for OpenRouter, e.g., `google/gemini-2.5-flash-lite-preview-09-2025`). The prompt includes a strict Pydantic JSON schema and instructions to apply a "Richness Filter". If the post lacks sufficient GPA/Course/Results data, the LLM rejects it. If approved, it structures the text into our exact `GameRecord` format.
-3. **Queueing**: Successfully extracted profiles are saved to `data/queue.jsonl`.
-4. **Human Review**: `npm run approve` provides an interactive CLI to read through the queued profiles and either `[a]pprove`, `[r]eject`, or `[q]uit`. Approved profiles are assigned a unique ID (e.g., `cr_2026_016`) and moved to the live `data/profiles.jsonl` database.
+## Testing
 
----
+```bash
+npm test
+```
 
-## Current Status & Implemented Features
+Runs `e2e_test.cjs`: a self-contained Puppeteer harness that spawns the server on a free port, registers a throwaway user, drives all four phases through the real UI, and asserts the score lands on the leaderboard. It writes to the real `data/game.db` (unique usernames per run) — safe to re-run, but don't use it against a production database copy you care about keeping pristine.
 
-- **Robust Defensive UI**: The frontend React components have been hardened with optional chaining (`?.`) so they will gracefully render empty states instead of crashing if an applicant is missing certain data (e.g., test scores, specific courses).
-- **Independent Scoring Logic**: 
-  - +10 points for a correct school guess.
-  - -2 points for a wrong school guess (only if the tier band was a hit).
-  - +10 points for correctly guessing the University tier.
-  - +10 points for correctly guessing the LAC tier.
-  - -5 points for guessing a completely wrong tier band.
-  - "No LAC Admit" claim explicitly tracked and scored (+10 / -5).
-- **Leaderboards & Persistence**: Full user registration/login flow. Scores are saved per user per profile in SQLite, enabling a dynamic global leaderboard.
-- **Smart Scraper**: LLM integration correctly maps unstructured Reddit text to the required JSON schema, rejecting low-quality data upfront.
+Manual user-perspective checks: see [HUMAN_CHECKLIST.md](HUMAN_CHECKLIST.md).
 
-## Functions Waiting to be Implemented / Known Limitations
+## Content pipeline (run locally only)
 
-- **Build Pipeline Integration**: The frontend currently uses `@babel/standalone` to compile JSX in the browser. For production deployment, this needs to be transitioned to a Vite or Webpack build process.
-- **PRAW Migration**: The scraper currently hits the unofficial `<url>.json` endpoint. Reddit rate limits this strictly. A documented migration path to PRAW (Python Reddit API Wrapper) is needed once an official Reddit Developer API token is acquired.
-- **Advanced Admin Dashboard**: Currently, profile review is done via a terminal CLI (`npm run approve`). A web-based admin interface to edit and approve profiles would improve the content pipeline.
+1. `npm run scrape [-- --url <reddit-post-url>]` — fetches r/collegeresults posts via the public `.json` endpoint, filters/structures them through an OpenRouter LLM with a strict schema, writes candidates to `data/queue.jsonl`.
+2. `npm run approve` — interactive CLI: `[a]pprove` / `[r]eject` each queued profile. Approved profiles get an ID (`cr_2026_NNN`) and are appended to `data/profiles.jsonl`.
+3. Push the updated `data/profiles.jsonl` to production. Restart (or scrape-free hot path: the file loads at server startup).
 
-## Further Deployment Plan
+## Known limitations / roadmap
 
-1. **Local Content Management**: The scraping and approval process (`npm run scrape` and `npm run approve`) should always be run **locally** on a developer's machine. This prevents runaway LLM API costs and keeps garbage data off the production server.
-2. **Pushing Updates**: Once the local `data/profiles.jsonl` has been enriched with new approved cases, that single file is securely pushed (via Git or SCP/SFTP) to the production server.
-3. **Server Deployment**:
-   - The Node Express app (`server.js`) can be deployed to any standard host (Railway, Render, DigitalOcean, or an EC2 instance).
-   - Ensure the `data/` directory is mounted on a persistent volume so the `game.db` SQLite file survives deployments/restarts.
-   - Environment variables (`PORT`, `JWT_SECRET`) must be configured on the host.
+- **No build pipeline** — in-browser Babel is fine for an MVP, production wants Vite.
+- **Scraper rate limits** — the unofficial Reddit `.json` endpoint is strictly limited; migration path is PRAW once a Reddit developer token exists.
+- **Admin dashboard** — profile review is CLI-only today.
+- `public/uploads/` still holds early prototype artifacts (`sample.jsonl`, original scraper prompt) — candidates for pruning.
 
----
+## Deployment notes
 
-## Local Setup Instructions
-
-1. `npm install`
-2. Configure `.env` with:
-   ```env
-   PORT=3005
-   JWT_SECRET=your_super_secret_key
-   OPENROUTER_API_KEY=your_openrouter_api_key_here
-   ```
-3. Run the server: `npm start`
-4. Access the game at `http://localhost:3005`
+- Deploy `server.js` to any Node host (Railway, Render, DO, EC2).
+- Mount `data/` on a persistent volume so `game.db` survives restarts.
+- Always set `JWT_SECRET` in the host environment.

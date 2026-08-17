@@ -87,8 +87,7 @@ function App() {
         setProfiles(data);
       })
       .catch(() => {
-        if (window.PROFILES) setProfiles(window.PROFILES);
-        else setError("Could not load profiles. Make sure the server is running.");
+        setError("Could not load profiles. Make sure the server is running.");
       });
   }, [auth]);
 

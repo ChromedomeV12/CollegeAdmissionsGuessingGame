@@ -62,12 +62,12 @@ function Phase1Profile({ profile, onStart, profileIdx, profileCount }) {
 
 function OverviewTab({ d }) {
   const rows = [
-    ["Gender", d.gender],
-    ["Ethnicity", d.ethnicity],
-    ["School type", d.school_type],
-    ["Region", d.school_region],
-    ["Classification", d.school_classification],
-    ["Income level", d.ses]
+    ["Gender", d.gender || "—"],
+    ["Ethnicity", d.ethnicity || "—"],
+    ["School type", d.school_type || "—"],
+    ["Region", d.school_region || "—"],
+    ["Classification", d.school_classification || "—"],
+    ["Income level", d.ses || "—"]
   ];
   return (
     <div className="fade-in">
@@ -143,15 +143,15 @@ function AcademicsTab({ sat, act, gpa, rigor, chartMode, setChartMode }) {
         <div className="card">
           <div className="metric">
             <span className="k">GPA (unweighted)</span>
-            <span className="v">{gpa.unweighted} <span className="sub">/ {gpa.unweighted_scale}</span></span>
+            <span className="v">{gpa.unweighted ?? "—"} <span className="sub">/ {gpa.unweighted_scale ?? "—"}</span></span>
           </div>
         </div>
         <div className="card">
           <div className="metric">
             <span className="k">Rigor</span>
-            <span className="v">{rigor.total_ap_courses} <span className="sub">APs</span></span>
+            <span className="v">{rigor.total_ap_courses ?? 0} <span className="sub">APs</span></span>
             <span className="label" style={{ color: "var(--text-tertiary)" }}>
-              + {rigor.total_post_ap_courses} post-AP · {rigor.total_honors_courses} honors
+              + {rigor.total_post_ap_courses ?? 0} post-AP · {rigor.total_honors_courses ?? 0} honors
             </span>
           </div>
         </div>

@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
+    "test": "node e2e_test.cjs",
     "scrape": "node scripts/scrape.js",
     "approve": "node scripts/scrape.js --approve",
     "dev": "node --watch server.js"
@@ -19,6 +20,7 @@
     "node-fetch": "^2.7.0"
   },
   "devDependencies": {
+    "@babel/parser": "^7.29.0",
     "@playwright/test": "^1.60.0",
     "puppeteer": "^24.43.1"
   }

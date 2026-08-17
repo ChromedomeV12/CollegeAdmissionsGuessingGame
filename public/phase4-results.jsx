@@ -222,8 +222,8 @@ function Phase4Results({
     onCommitScore && onCommitScore(profile.id, score);
   }, [profile.id, score]);
 
-  const actualTier = profile.game_metadata.actual_school_tier;
-  const finalDecision = profile.application_results.final_decision;
+  const actualTier = profile.game_metadata?.actual_school_tier;
+  const finalDecision = profile.application_results?.final_decision;
 
   // partition rows into university-section and LAC-section
   const uniKeys = new Set(uniAvail.all.map(a => a.key));
@@ -353,7 +353,7 @@ function Phase4Results({
       )}
 
       {/* Teaching points */}
-      {profile.game_metadata.teaching_points && profile.game_metadata.teaching_points.length > 0 && (
+      {(profile.game_metadata?.teaching_points || []).length > 0 && (
         <div className="callout callout--teach stagger" style={{ marginBottom: 14, alignItems: "flex-start" }}>
           <i className="ti ti-bulb" />
           <div>
@@ -370,8 +370,8 @@ function Phase4Results({
       {/* Final banner */}
       <div className="final-banner fade-in">
         <span className="label">Enrolled at</span>
-        <div className="school">{finalDecision.school}</div>
-        <div className="date">Admitted on {formatDate(finalDecision.decision_date)}</div>
+        <div className="school">{finalDecision?.school ?? "—"}</div>
+        <div className="date">Admitted on {formatDate(finalDecision?.decision_date)}</div>
       </div>
 
       {/* Rank progress */}

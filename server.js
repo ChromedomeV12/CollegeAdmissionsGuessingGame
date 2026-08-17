@@ -10,6 +10,9 @@ import "dotenv/config";
 const app = express();
 const PORT = process.env.PORT || 3005;
 const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret_for_dev";
+if (!process.env.JWT_SECRET) {
+  console.warn("⚠️  JWT_SECRET not set — using insecure dev fallback. Set JWT_SECRET in production.");
+}
 
 app.use(bodyParser.json());
 app.use(express.static("public"));
@@ -78,11 +81,13 @@ function authenticateToken(req, res, next) {
 }
 
 // ─── API Endpoints: Auth ──────────────────────────────────────────────────────
-
 async function registerHandler(req, res) {
   const { username, password } = req.body;
-  if (!username || !password) {
-    return res.status(400).json({ error: "Missing username or password" });
+  if (typeof username !== 'string' || !/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+    return res.status(400).json({ error: "Username must be 3-20 characters: letters, numbers, or underscore" });
+  }
+  if (typeof password !== 'string' || password.length < 8 || password.length > 72) {
+    return res.status(400).json({ error: "Password must be between 8 and 72 characters" });
   }
 
   try {
@@ -132,14 +137,8 @@ async function loginHandler(req, res) {
   }
 }
 
-app.post("/register", registerHandler);
 app.post("/api/register", registerHandler);
-app.post("/login", loginHandler);
 app.post("/api/login", loginHandler);
-
-app.get("/me", authenticateToken, (req, res) => {
-  res.json({ loggedIn: true, username: req.user.username });
-});
 
 app.get("/api/me", authenticateToken, (req, res) => {
   try {
@@ -157,16 +156,6 @@ app.get("/api/me", authenticateToken, (req, res) => {
 
 // ─── API Endpoints: Game ──────────────────────────────────────────────────────
 
-app.get("/profiles", (req, res) => {
-  // Reload profiles in case file changed on disk
-  profiles = loadProfiles();
-  const stripped = profiles.map(p => {
-    const { application_results, ...rest } = p;
-    return rest;
-  });
-  res.json(stripped);
-});
-
 app.get("/api/profiles", (req, res) => {
   profiles = loadProfiles();
   const stripped = profiles.map(p => {
@@ -181,16 +170,14 @@ app.get("/api/profiles/:id", (req, res) => {
   if (!profile) return res.status(404).json({ error: "Profile not found" });
   res.json(profile);
 });
-app.get("/profiles/:id", (req, res) => {
-  const profile = profiles.find(p => p.id === req.params.id);
-  if (!profile) return res.status(404).json({ error: "Profile not found" });
-  res.json(profile);
-});
 
 app.post("/api/scores", authenticateToken, (req, res) => {
   const { profileId, score, breakdown } = req.body;
-  if (!profileId || typeof score !== 'number') {
-    return res.status(400).json({ error: "Missing required fields" });
+  if (typeof profileId !== 'string' || profileId.length === 0 || profileId.length > 64) {
+    return res.status(400).json({ error: "profile_id must be a non-empty string up to 64 characters" });
+  }
+  if (!Number.isInteger(score) || score < -100 || score > 100) {
+    return res.status(400).json({ error: "score must be an integer between -100 and 100" });
   }
 
   try {
@@ -243,6 +230,9 @@ app.get("/api/stats", (req, res) => {
 });
 
 // ─── Frontend ─────────────────────────────────────────────────────────────────
+
+// Unknown API paths return JSON rather than the SPA index
+app.use("/api", (req, res) => res.status(404).json({ error: "Not found" }));
 
 app.get("*", (req, res) => {
   res.sendFile(path.resolve("public/index.html"));

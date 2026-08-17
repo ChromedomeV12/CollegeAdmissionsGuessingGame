@@ -4,18 +4,18 @@ function ProfileCollapsedSummary({ profile, onExpand }) {
   const d = profile.demographics || {};
   const sat = profile.test_scores?.sat;
   const act = profile.test_scores?.act;
-  const test = sat ? `SAT ${sat.superscore_total}` : (act ? `ACT ${act.composite}` : "Test-optional");
+  const test = sat ? `SAT ${sat.superscore_total ?? "—"}` : (act ? `ACT ${act.composite ?? "—"}` : "Test-optional");
   return (
     <div className="profile-collapsed-summary">
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         <div className="who">{profile.id}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Badge>{d.gender}</Badge>
-          <Badge>{d.ethnicity}</Badge>
-          <Badge>{d.ses}</Badge>
+          <Badge>{d.gender || "—"}</Badge>
+          <Badge>{d.ethnicity || "—"}</Badge>
+          <Badge>{d.ses || "—"}</Badge>
           <Badge>{test}</Badge>
-          <Badge>GPA {profile.academic_profile?.gpa?.unweighted}</Badge>
-          <Badge>{profile.academic_profile?.course_rigor?.total_ap_courses} APs</Badge>
+          <Badge>GPA {profile.academic_profile?.gpa?.unweighted ?? "—"}</Badge>
+          <Badge>{profile.academic_profile?.course_rigor?.total_ap_courses ?? 0} APs</Badge>
         </div>
       </div>
       <button className="btn btn--ghost" onClick={onExpand}>
