@@ -79,6 +79,13 @@ function fetchJson(port, p) {
 
 // ─── main ───────────────────────────────────────────────────────────────────
 
+// Module-scope diagnostics so the top-level catch handler can report them
+// even when main() throws before they'd be captured in local scope.
+let consoleErrors = [];
+let pageErrors = [];
+let serverStdout = "";
+let serverStderr = "";
+
 async function main() {
   const port = await getFreePort();
   log("Using port", port);
@@ -89,8 +96,6 @@ async function main() {
     env: { ...process.env, PORT: String(port) },
     stdio: ["ignore", "pipe", "pipe"],
   });
-  let serverStdout = "";
-  let serverStderr = "";
   serverProc.stdout.on("data", (d) => (serverStdout += d.toString()));
   serverProc.stderr.on("data", (d) => (serverStderr += d.toString()));
   serverProc.on("exit", (code, sig) => {
@@ -105,8 +110,6 @@ async function main() {
   const password = "e2etest1234";
 
   let browser;
-  let consoleErrors = [];
-  let pageErrors = [];
 
   try {
     await waitForServer(port);
