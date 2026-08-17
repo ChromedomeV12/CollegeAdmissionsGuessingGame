@@ -2,10 +2,15 @@
 
 A React-based college admissions guessing game. Players read real high school applicant profiles (scraped from r/collegeresults) and predict admissions outcomes across university tiers, competing on a global leaderboard.
 
+## License
+
+MIT — see [LICENSE](LICENSE). Contributing rules: [CONTRIBUTING.md](CONTRIBUTING.md). Vulnerability reporting: [SECURITY.md](SECURITY.md).
+
 ## Architecture
 
 1. **Frontend (`public/`)** — React SPA, no build step: JSX is compiled in the browser by `@babel/standalone`. Four game phases (Profile → Tier → Schools → Reveal) plus auth and leaderboard screens. State lives client-side; scores sync to the backend.
 2. **Backend (`server.js`)** — Express. Serves `public/` statically and exposes the JSON API under `/api/*` (unknown `/api` paths return 404 JSON, not the SPA). JWT sessions (`jsonwebtoken`), bcrypt password hashing (`bcryptjs`).
+
 3. **Storage (hybrid)**:
    - `data/profiles.jsonl` — static game content. Read-only to the server, loaded into memory at startup. Replace the file to update content.
    - `data/game.db` — SQLite (`better-sqlite3`, WAL) for `users` and `scores`. Powers persistence and the leaderboard.
