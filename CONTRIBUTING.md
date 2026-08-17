@@ -31,8 +31,8 @@ contribute code, and the ground rules that keep the project healthy.
    ```bash
    npm test        # end-to-end Puppeteer suite — must end with ALL STEPS PASSED
    ```
-   For UI changes, also walk through the relevant sections of
-   [HUMAN_CHECKLIST.md](HUMAN_CHECKLIST.md).
+   For UI changes, also run the relevant sections of
+   [AGENT_CHECKLIST.md](AGENT_CHECKLIST.md).
 4. **Open a pull request.** Describe what changed and why. Screenshots for UI
    changes. PRs that fail `npm test` won't be merged.
 5. **Data changes** (new profiles): run the scrape → approve pipeline locally

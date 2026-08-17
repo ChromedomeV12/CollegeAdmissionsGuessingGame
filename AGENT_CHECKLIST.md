@@ -1,6 +1,6 @@
 # Agent Acceptance Checklist
 
-An executable self-check workflow for an AI agent with a real browser + shell. Run every check in order; record results in the report table at the bottom. Humans only spot-check sections 3, 4, and the visual spot-check — see [HUMAN_CHECKLIST.md](HUMAN_CHECKLIST.md).
+An executable self-check workflow for an AI agent with a real browser + shell. Run every check in order; record results in the report table at the bottom.
 
 All selectors below are grounded in the verified Contract facts or in `public/*.jsx` (file:line cited in an HTML comment where a selector is not a Contract fact). Selector preference, in descending order: `data-screen-label` attribute → visible button text → CSS class. The reference implementation for selector anchoring is [`e2e_test.cjs`](e2e_test.cjs).
 
