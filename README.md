@@ -6,7 +6,7 @@ A React-based college admissions guessing game. Players read real high school ap
 
 MIT — see [LICENSE](LICENSE). Contributing rules: [CONTRIBUTING.md](CONTRIBUTING.md). Vulnerability reporting: [SECURITY.md](SECURITY.md).
 
-This project is co-owned and co-developed by [ChromedomeV12](https://github.com/ChromedomeV12) (repo owner) and [MJanW](https://github.com/MJanW).
+This project is co-owned and co-developed by ChromedomeV12 (repo owner) and Mason W ([MJanW](https://github.com/MJanW)).
 
 ## Architecture
 
