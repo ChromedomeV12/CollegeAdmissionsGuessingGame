@@ -6,6 +6,8 @@ A React-based college admissions guessing game. Players read real high school ap
 
 MIT — see [LICENSE](LICENSE). Contributing rules: [CONTRIBUTING.md](CONTRIBUTING.md). Vulnerability reporting: [SECURITY.md](SECURITY.md).
 
+This project is co-owned and co-developed by [ChromedomeV12](https://github.com/ChromedomeV12) (repo owner) and [MJanW](https://github.com/MJanW).
+
 ## Architecture
 
 1. **Frontend (`public/`)** — React SPA, no build step: JSX is compiled in the browser by `@babel/standalone`. Four game phases (Profile → Tier → Schools → Reveal) plus auth and leaderboard screens. State lives client-side; scores sync to the backend.
