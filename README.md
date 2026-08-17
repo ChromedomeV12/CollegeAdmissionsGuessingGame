@@ -53,7 +53,7 @@ npm test
 
 Runs `e2e_test.cjs`: a self-contained Puppeteer harness that spawns the server on a free port, registers a throwaway user, drives all four phases through the real UI, and asserts the score lands on the leaderboard. It writes to the real `data/game.db` (unique usernames per run) — safe to re-run, but don't use it against a production database copy you care about keeping pristine.
 
-Manual user-perspective checks: see [HUMAN_CHECKLIST.md](HUMAN_CHECKLIST.md).
+Acceptance checks: [HUMAN_CHECKLIST.md](HUMAN_CHECKLIST.md) is the manual spot-check companion; [AGENT_CHECKLIST.md](AGENT_CHECKLIST.md) is the agent-run self-check workflow (boot, API, auth, all four phases, navigation/persistence, console-error watch, screenshots, and the `npm test` gate).
 
 ## Content pipeline (run locally only)
 

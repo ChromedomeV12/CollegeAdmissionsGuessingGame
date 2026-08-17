@@ -60,118 +60,115 @@ function AuthScreen({ onLogin }) {
     if (e.key === "Enter") handleSubmit();
   }
 
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", justifyContent: "center",
-      minHeight: "100vh", padding: "1rem",
-    }}>
-      <div className="card" style={{ maxWidth: 380, width: "100%", textAlign: "center" }}>
+  function switchMode(next) {
+    setMode(next);
+    setError("");
+  }
 
-        {/* Logo */}
-        <div style={{ marginBottom: "1.5rem" }}>
-          <div className="brand-mark" aria-hidden="true" style={{ margin: "0 auto 10px" }} />
-          <h1 style={{ fontSize: 22, fontWeight: 700 }}>Admissions <em>Oracle</em></h1>
-          <p style={{ fontSize: 13, color: "var(--text-tertiary)", marginTop: 4 }}>
-            Predict college admissions results
-          </p>
+  const confirmActive = mode === "register" && confirmPassword.length > 0;
+  const passwordsMatch = confirmActive && password === confirmPassword;
+
+  return (
+    <div className="app-shell center" style={{ minHeight: "100vh", padding: "var(--sp-5)" }}>
+      <div className="card stack" style={{ maxWidth: 380, width: "100%", gap: "var(--sp-5)" }}>
+
+        {/* Brand */}
+        <div className="stack" style={{ alignItems: "center", textAlign: "center", gap: "var(--sp-2)" }}>
+          <div className="brand-mark" aria-hidden="true" />
+          <h1 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: "var(--fs-h2)", margin: 0, letterSpacing: "-0.015em" }}>
+            Admissions <em className="accent-text" style={{ fontStyle: "italic" }}>Oracle</em>
+          </h1>
+          <p className="muted" style={{ margin: 0 }}>Predict college admissions results</p>
         </div>
 
-        {/* Toggle */}
-        <div style={{ display: "flex", gap: 6, marginBottom: "1.25rem", background: "var(--bg-secondary)", borderRadius: "var(--radius-md)", padding: 4 }}>
+        {/* Login / Register toggle */}
+        <div className="seg" role="group" aria-label="Authentication mode">
           <button
-            onClick={() => { setMode("login"); setError(""); }}
-            style={{
-              flex: 1, padding: "7px 0", fontSize: 13, fontWeight: mode === "login" ? 600 : 400,
-              border: "none", borderRadius: "var(--radius-md)",
-              background: mode === "login" ? "var(--bg-primary)" : "transparent",
-              color: mode === "login" ? "var(--text-primary)" : "var(--text-tertiary)",
-              cursor: "pointer", boxShadow: mode === "login" ? "0 1px 3px rgba(0,0,0,.08)" : "none",
-            }}
+            type="button"
+            aria-pressed={mode === "login"}
+            onClick={() => switchMode("login")}
           >Log in</button>
           <button
-            onClick={() => { setMode("register"); setError(""); }}
-            style={{
-              flex: 1, padding: "7px 0", fontSize: 13, fontWeight: mode === "register" ? 600 : 400,
-              border: "none", borderRadius: "var(--radius-md)",
-              background: mode === "register" ? "var(--bg-primary)" : "transparent",
-              color: mode === "register" ? "var(--text-primary)" : "var(--text-tertiary)",
-              cursor: "pointer", boxShadow: mode === "register" ? "0 1px 3px rgba(0,0,0,.08)" : "none",
-            }}
+            type="button"
+            aria-pressed={mode === "register"}
+            onClick={() => switchMode("register")}
           >Create account</button>
         </div>
 
         {/* Fields */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: "1rem", textAlign: "left" }}>
-          <div>
-            <label style={{ fontSize: 12, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>Username</label>
+        <div className="stack" style={{ gap: "var(--sp-3)" }}>
+          <div className="stack" style={{ gap: "var(--sp-1)" }}>
+            <label className="label" htmlFor="auth-username">Username</label>
             <input
+              id="auth-username"
               type="text"
               placeholder="your_username"
               value={username}
               onChange={e => setUsername(e.target.value)}
               onKeyDown={handleKey}
-              style={{ width: "100%" }}
               autoFocus
               autoComplete="username"
             />
           </div>
-          <div>
-            <label style={{ fontSize: 12, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>Password</label>
+          <div className="stack" style={{ gap: "var(--sp-1)" }}>
+            <label className="label" htmlFor="auth-password">Password</label>
             <input
+              id="auth-password"
               type="password"
               placeholder={mode === "register" ? "At least 6 characters" : "Your password"}
               value={password}
               onChange={e => setPassword(e.target.value)}
               onKeyDown={handleKey}
-              style={{ width: "100%" }}
               autoComplete={mode === "login" ? "current-password" : "new-password"}
             />
           </div>
           {mode === "register" && (
-            <div>
-              <label style={{ fontSize: 12, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>Confirm password</label>
+            <div className="stack" style={{ gap: "var(--sp-1)" }}>
+              <label className="label" htmlFor="auth-confirm">Confirm password</label>
               <input
+                id="auth-confirm"
                 type="password"
                 placeholder="Same password again"
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
                 onKeyDown={handleKey}
-                style={{ width: "100%" }}
                 autoComplete="new-password"
+                aria-describedby="confirm-feedback"
               />
+              {confirmActive && (
+                <span
+                  id="confirm-feedback"
+                  aria-live="polite"
+                  className={`badge ${passwordsMatch ? "badge--ok" : "badge--danger"}`}
+                  style={{ alignSelf: "flex-start" }}
+                >
+                  <i className={`ti ${passwordsMatch ? "ti-check" : "ti-x"}`} style={{ fontSize: "var(--fs-xs)" }} aria-hidden="true" />
+                  {passwordsMatch ? "Passwords match" : "Passwords don't match"}
+                </span>
+              )}
             </div>
           )}
         </div>
 
         {/* Error */}
         {error && (
-          <div style={{
-            background: "var(--bg-danger)", color: "var(--text-danger)", border: "0.5px solid var(--border-danger)",
-            borderRadius: "var(--radius-md)", padding: "8px 12px", fontSize: 13, marginBottom: "1rem", textAlign: "left",
-          }}>
-            {error}
+          <div className="callout" role="alert" style={{ background: "var(--bg-danger)", borderColor: "var(--border-danger)" }}>
+            <i className="ti ti-alert-triangle" style={{ color: "var(--text-danger)" }} aria-hidden="true" />
+            <span style={{ color: "var(--text-danger)" }}>{error}</span>
           </div>
         )}
 
         {/* Submit */}
         <button
+          type="button"
           className="btn-primary"
-          style={{ width: "100%", opacity: loading ? 0.6 : 1 }}
           onClick={handleSubmit}
           disabled={loading}
+          aria-busy={loading}
+          style={{ width: "100%" }}
         >
           {loading ? "Please wait…" : mode === "login" ? "Log in" : "Create account"}
         </button>
-
-        <p style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: "1rem" }}>
-          {mode === "login" ? "Don't have an account? " : "Already have an account? "}
-          <button
-            onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}
-            style={{ background: "none", border: "none", color: "var(--text-info)", cursor: "pointer", fontSize: 12, padding: 0 }}
-          >
-            {mode === "login" ? "Create one" : "Log in"}
-          </button>
-        </p>
       </div>
     </div>
   );

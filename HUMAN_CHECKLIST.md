@@ -1,5 +1,7 @@
 # Human Acceptance Checklist
 
+> **Spot-check companion to [`AGENT_CHECKLIST.md`](AGENT_CHECKLIST.md).** The agent self-check runs the full suite end-to-end (boot, API, auth, all four phases, navigation/persistence, console-error watch, screenshots, and the `npm test` gate). Humans only spot-check the items below — focus on **Section 3 (Game flow)**, **Section 4 (Navigation / persistence)**, and the **visual spot-check** — i.e. the things a human eye catches that an automated browser does not. The checked content below is unchanged; this header just frames its role.
+
 Manual verification of the post-revamp Admissions Oracle. Work top to bottom; each box is a single observable result. UI labels quoted below were checked against [`public/*.jsx`](public/app.jsx).
 
 ## 1. Setup (~2 min)

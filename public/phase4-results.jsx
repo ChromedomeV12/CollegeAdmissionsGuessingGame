@@ -102,26 +102,26 @@ function CelebrationBanner({ score, accuracy }) {
   const isGood = accuracy >= 50 || score >= 15;
   if (!isGood) return null;
 
-  return (
     <div className="ao-celebrate-banner" style={{
-      background: isGreat ? "linear-gradient(135deg, #22c55e15, #3b82f615)" : "#f0fdf415",
-      border: "1px solid " + (isGreat ? "#22c55e50" : "#86efac50"),
-      borderRadius: 12, padding: "14px 18px", marginBottom: 14,
-      display: "flex", alignItems: "center", gap: 12,
+      background: isGreat
+        ? "linear-gradient(135deg, var(--accent-ok-bg), var(--accent-info-bg))"
+        : "var(--accent-ok-bg)",
+      border: "1px solid var(--accent-ok-bd)",
+      borderRadius: "var(--r-lg)", padding: "var(--sp-4) var(--sp-5)", marginBottom: "var(--sp-4)",
+      display: "flex", alignItems: "center", gap: "var(--sp-3)",
     }}>
-      <span style={{ fontSize: 28 }}>{isGreat ? "🎯" : "🎉"}</span>
+      <span style={{ fontSize: "var(--fs-h2)", lineHeight: 1 }}>{isGreat ? "🎯" : "🎉"}</span>
       <div>
-        <div style={{ fontSize: 14, fontWeight: 600, color: "#16a34a" }}>
+        <div style={{ fontSize: "var(--fs-md)", fontWeight: 600, color: "var(--accent-ok-fg)" }}>
           {isGreat ? "Sharp eye!" : "Nice work!"}
         </div>
-        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>
+        <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-tertiary)", marginTop: "var(--sp-1)" }}>
           {isGreat
             ? `${accuracy}% accuracy on admits — you read this profile well.`
             : `You caught ${score > 0 ? "+" + score : score} pts on this one.`}
         </div>
       </div>
     </div>
-  );
 }
 
 // Phase 4 — Results reveal
@@ -245,30 +245,33 @@ function Phase4Results({
       <CelebrationBanner score={score} accuracy={accuracy} />
 
       {/* Score cards */}
-      <div className="grid grid-2 stagger" style={{ marginBottom: 18 }}>
-        <div className="card" style={{ padding: "20px 22px" }}>
+      <div className="grid grid-2 stagger" style={{ marginBottom: "var(--sp-5)" }}>
+        <div className="card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
           <div className="label">Points earned</div>
-          <div className="score-pop" style={{ marginTop: 6, color: score < 0 ? "var(--accent-danger-fg)" : "var(--text-primary)" }}>
+          <div className="score-pop" style={{ marginTop: "var(--sp-2)", color: score < 0 ? "var(--accent-danger-fg)" : "var(--text-primary)" }}>
             <AnimatedNum value={score} format={n => {
               const r = Math.round(n);
               return (r > 0 ? "+" : "") + r;
             }} />
           </div>
+          <div className="label" style={{ color: "var(--text-tertiary)", marginTop: "var(--sp-2)" }}>
+            from this profile
+          </div>
         </div>
-        <div className="card" style={{ padding: "20px 22px" }}>
+        <div className="card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
           <div className="label">Accuracy</div>
-          <div className="score-pop" style={{ marginTop: 6 }}>
+          <div className="score-pop" style={{ marginTop: "var(--sp-2)" }}>
             <AnimatedNum value={accuracy} format={n => Math.round(n) + "%"} />
           </div>
-          <div className="label" style={{ color: "var(--text-tertiary)", marginTop: 6 }}>
+          <div className="label" style={{ color: "var(--text-tertiary)", marginTop: "var(--sp-2)" }}>
             correct picks ÷ admits in your tier
           </div>
         </div>
       </div>
 
       {/* Tier result */}
-      <div className="card stagger" style={{ marginBottom: 14 }}>
-        <div className="label" style={{ marginBottom: 10 }}>Tier results</div>
+      <div className="card stagger" style={{ marginBottom: "var(--sp-4)" }}>
+        <div className="label" style={{ marginBottom: "var(--sp-3)" }}>Tier results</div>
         <TierResultRow
           kind="University"
           pick={universityTierPick}
@@ -285,9 +288,9 @@ function Phase4Results({
           actualTier={null}
         />
         {tierBonuses.length > 0 && (
-          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "0.5px solid var(--border-1)" }}>
+          <div style={{ marginTop: "var(--sp-3)", paddingTop: "var(--sp-3)", borderTop: "0.5px solid var(--border-1)" }}>
             {tierBonuses.map((b, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, padding: "4px 0" }}>
+              <div key={i} className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
                 <span style={{ color: "var(--accent-ok-fg)" }}>
                   <i className="ti ti-check" style={{ marginRight: 6 }} />
                   Correct {b.kind.toLowerCase()} tier
@@ -300,9 +303,9 @@ function Phase4Results({
           </div>
         )}
         {tierPenalties.length > 0 && (
-          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "0.5px solid var(--border-1)" }}>
+          <div style={{ marginTop: "var(--sp-3)", paddingTop: "var(--sp-3)", borderTop: "0.5px solid var(--border-1)" }}>
             {tierPenalties.map((p, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, padding: "4px 0" }}>
+              <div key={i} className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
                 <span style={{ color: "var(--accent-danger-fg)" }}>
                   <i className="ti ti-alert-triangle" style={{ marginRight: 6 }} />
                   Wrong {p.kind.toLowerCase()} band — no admits in {p.tier}
@@ -315,8 +318,8 @@ function Phase4Results({
           </div>
         )}
         {lacClaim && (
-          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "0.5px solid var(--border-1)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, padding: "4px 0" }}>
+          <div style={{ marginTop: "var(--sp-3)", paddingTop: "var(--sp-3)", borderTop: "0.5px solid var(--border-1)" }}>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
               <span style={{ color: lacClaim.delta > 0 ? "var(--accent-ok-fg)" : "var(--accent-danger-fg)" }}>
                 <i className={"ti ti-" + (lacClaim.delta > 0 ? "check" : "x")} style={{ marginRight: 6 }} />
                 {lacClaim.label}
@@ -331,11 +334,11 @@ function Phase4Results({
 
       {/* School breakdown */}
       {(uniRows.length + lacRows.length) > 0 && (
-        <div className="card stagger" style={{ marginBottom: 14 }}>
-          <div className="label" style={{ marginBottom: 8 }}>School-by-school</div>
+        <div className="card stagger" style={{ marginBottom: "var(--sp-4)" }}>
+          <div className="label" style={{ marginBottom: "var(--sp-2)" }}>School-by-school</div>
           {uniRows.length > 0 && (
             <>
-              <div className="label" style={{ marginTop: 6, marginBottom: 4, color: "var(--text-tertiary)" }}>
+              <div className="label" style={{ marginTop: "var(--sp-2)", marginBottom: "var(--sp-1)", color: "var(--text-tertiary)" }}>
                 Universities · {universityTierPick}
               </div>
               <ResultGroup rows={uniRows} />
@@ -343,7 +346,7 @@ function Phase4Results({
           )}
           {lacRows.length > 0 && (
             <>
-              <div className="label" style={{ marginTop: 14, marginBottom: 4, color: "var(--text-tertiary)" }}>
+              <div className="label" style={{ marginTop: "var(--sp-4)", marginBottom: "var(--sp-1)", color: "var(--text-tertiary)" }}>
                 LACs · {lacTierPick}
               </div>
               <ResultGroup rows={lacRows} />
@@ -354,13 +357,13 @@ function Phase4Results({
 
       {/* Teaching points */}
       {(profile.game_metadata?.teaching_points || []).length > 0 && (
-        <div className="callout callout--teach stagger" style={{ marginBottom: 14, alignItems: "flex-start" }}>
+        <div className="callout callout--teach stagger" style={{ marginBottom: "var(--sp-4)", alignItems: "flex-start" }}>
           <i className="ti ti-bulb" />
           <div>
-            <div className="label" style={{ color: "var(--accent-info-fg)", marginBottom: 6 }}>What this case teaches</div>
-            <ul style={{ margin: 0, paddingLeft: 16 }}>
+            <div className="label" style={{ color: "var(--accent-info-fg)", marginBottom: "var(--sp-2)" }}>What this case teaches</div>
+            <ul style={{ margin: 0, paddingLeft: "var(--sp-4)" }}>
               {profile.game_metadata.teaching_points.map((p, i) =>
-                <li key={i} style={{ margin: "4px 0" }}>{p}</li>
+                <li key={i} style={{ margin: "var(--sp-1) 0" }}>{p}</li>
               )}
             </ul>
           </div>
@@ -369,22 +372,22 @@ function Phase4Results({
 
       {/* Final banner */}
       <div className="final-banner fade-in">
+        <span className="stamp-mark" aria-hidden="true">Admitted</span>
         <span className="label">Enrolled at</span>
         <div className="school">{finalDecision?.school ?? "—"}</div>
         <div className="date">Admitted on {formatDate(finalDecision?.decision_date)}</div>
       </div>
 
-      {/* Rank progress */}
       {rank && (
-        <div className="card stagger" style={{ marginTop: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+        <div className="card stagger" style={{ marginTop: "var(--sp-4)" }}>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline", marginBottom: "var(--sp-3)" }}>
             <div className="label">Session ranking</div>
             <div className="label" style={{ color: "var(--text-tertiary)" }}>
               <span className="num">{totalPoints}</span> pts total
             </div>
           </div>
           <RankProgressBar rank={rank} totalPoints={totalPoints} />
-          <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+          <div className="row" style={{ marginTop: "var(--sp-4)", justifyContent: "space-between", flexWrap: "wrap", gap: "var(--sp-2)" }}>
             <span className="label" style={{ color: "var(--text-tertiary)" }}>This case contributed</span>
             <span className="num" style={{ fontFamily: "var(--font-mono)", color: score < 0 ? "var(--accent-danger-fg)" : "var(--accent-ok-fg)" }}>
               {score > 0 ? "+" : ""}{score} pts
@@ -393,7 +396,7 @@ function Phase4Results({
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 22 }}>
+      <div className="row" style={{ justifyContent: "space-between", marginTop: "var(--sp-6)" }}>
         <Btn variant="ghost" onClick={onTryAgain} icon="rotate">Try again</Btn>
         <Btn onClick={onNext} disabled={!hasNext} iconRight="arrow-right">
           {hasNext ? "Next profile" : "All profiles played"}
@@ -405,23 +408,27 @@ function Phase4Results({
 
 function TierResultRow({ kind, pick, hit, admits, actualTier }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
-      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-        <span className={"result-row " + ""}>
-          <span className={"ico " + (hit ? "ok" : "miss")}>
-            <i className={"ti ti-" + (hit ? "check" : "x")} />
-          </span>
+    <div className="row" style={{ justifyContent: "space-between", gap: "var(--sp-4)", alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div className="row" style={{ gap: "var(--sp-3)", alignItems: "center", flexWrap: "nowrap" }}>
+        <span style={{
+          width: 22, height: 22, borderRadius: "50%",
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          fontSize: "var(--fs-base)", flexShrink: 0,
+          background: hit ? "var(--accent-ok-bg)" : "var(--accent-warn-bg)",
+          color: hit ? "var(--accent-ok-fg)" : "var(--accent-warn-fg)",
+        }}>
+          <i className={"ti ti-" + (hit ? "check" : "x")} />
         </span>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 500 }}>{kind} tier — {pick}</div>
-          <div className="label" style={{ marginTop: 2, color: "var(--text-tertiary)" }}>
+          <div style={{ fontSize: "var(--fs-md)", fontWeight: 500 }}>{kind} tier — {pick}</div>
+          <div className="label" style={{ marginTop: "var(--sp-1)", color: "var(--text-tertiary)" }}>
             {hit ? "Hit · matched at least one admit" : "Miss · no admits in this tier"}
           </div>
         </div>
       </div>
       <div style={{ maxWidth: 360, textAlign: "right" }}>
         {hit ? (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <div className="row" style={{ gap: "var(--sp-2)", flexWrap: "wrap", justifyContent: "flex-end" }}>
             {admits.map(s => <Badge key={s} kind="ok">{s}</Badge>)}
           </div>
         ) : (
@@ -447,7 +454,7 @@ function ResultGroup({ rows }) {
     <div>
       {interesting.map(r => <ResultRow key={r.key} row={r} />)}
       {quiet.length > 0 && (
-        <details className="collapsible" style={{ borderTop: interesting.length > 0 ? "0.5px solid var(--border-1)" : "none", marginTop: 4 }}>
+        <details className="collapsible" style={{ borderTop: interesting.length > 0 ? "0.5px solid var(--border-1)" : "none", marginTop: "var(--sp-1)" }}>
           <summary>
             <i className="ti ti-chevron-down chev" />
             {quiet.length} other schools — correctly skipped
@@ -488,15 +495,15 @@ function ResultRow({ row }) {
         <ConfettiBurst active={burst} x={14} y={14} />
       )}
       <span className={"ico " + icoCls}><i className={"ti ti-" + icoIcon} /></span>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+      <div className="row" style={{ alignItems: "center", gap: "var(--sp-2)", flex: 1, minWidth: 0, flexWrap: "nowrap" }}>
         {window.SchoolLogo ? <SchoolLogo name={row.name} size={22} /> : null}
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 500 }}>{row.name}</div>
-          <div className="label" style={{ marginTop: 2, color: "var(--text-tertiary)" }}>{note}</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: "var(--fs-base)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</div>
+          <div className="label" style={{ marginTop: "var(--sp-1)", color: "var(--text-tertiary)" }}>{note}</div>
         </div>
       </div>
       {row.wasAdmit ? <Badge kind="ok">Admit</Badge> : <Badge>Not admit</Badge>}
-      <span className={"delta " + deltaCls}>
+      <span className={"delta " + deltaCls} style={{ fontVariantNumeric: "tabular-nums", textAlign: "right", minWidth: "3ch" }}>
         {row.delta > 0 ? `+${row.delta}` : row.delta === 0 ? "0" : `${row.delta}`}
       </span>
     </div>

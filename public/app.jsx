@@ -12,30 +12,67 @@ function authHeaders(token) {
   return { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
 }
 
+function CalmLoading({ label = "Loading…", minHeight = "60vh" }) {
+  return (
+    <div className="app-shell center" style={{ minHeight, flexDirection: "column", gap: "var(--sp-3)" }}>
+      <style>{`@keyframes aoPulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
+      <p className="muted" style={{ animation: "aoPulse 1.6s ease-in-out infinite", fontFamily: "var(--font-mono)", letterSpacing: "0.06em", margin: 0 }}>
+        {label}
+      </p>
+    </div>
+  );
+}
+
 function Phase0Menu({ profiles, onSelectProfile, scoresByProfile }) {
   return (
     <div className="fade-in" data-screen-label="00 Menu">
       <div className="section-head">
-        <h2>Select an Applicant</h2>
+        <div className="title-block">
+          <span className="eyebrow">Casework</span>
+          <h2>Select an Applicant</h2>
+        </div>
         <span className="sub">Choose a profile to evaluate.</span>
       </div>
-      <div className="grid">
+      <div className="grid grid-2 stagger">
         {profiles.map((p, i) => {
           const score = scoresByProfile[p.id];
           const hasPlayed = score !== undefined;
+          const num = String(i + 1).padStart(2, "0");
+          const kind = hasPlayed
+            ? (score > 0 ? "ok" : score < 0 ? "danger" : "neutral")
+            : "neutral";
           return (
-            <div key={p.id} className="card school-card" onClick={() => onSelectProfile(i)}>
-              <div>
-                <div className="name">Applicant {String(i + 1).padStart(2, "0")} — {p.id}</div>
-                <div className="label" style={{ marginTop: 2, color: "var(--text-tertiary)" }}>
-                  {p.demographics?.gender || "Unknown"} · {p.demographics?.ethnicity || "Unknown"}
-                </div>
+            <div
+              key={p.id}
+              className="card school-card"
+              role="button"
+              tabIndex={0}
+              aria-label={`Select applicant ${num}, ${p.id}${hasPlayed ? `, played, ${score} points` : ", not yet played"}`}
+              aria-pressed={hasPlayed ? "true" : "false"}
+              onClick={() => onSelectProfile(i)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelectProfile(i);
+                }
+              }}
+            >
+              <div className="stack" style={{ gap: "var(--sp-1)" }}>
+                <span className="label">Applicant {num}</span>
+                <span className="name accent-text">{p.id}</span>
+                <span className="row" style={{ gap: "var(--sp-1)", flexWrap: "wrap", marginTop: "var(--sp-1)" }}>
+                  <span className="chip">{p.demographics?.gender || "Unknown"}</span>
+                  <span className="chip">{p.demographics?.ethnicity || "Unknown"}</span>
+                </span>
               </div>
-              <div>
+              <div className="stack" style={{ gap: "var(--sp-1)", alignItems: "flex-end" }}>
+                <span className="check" aria-hidden="true">
+                  {hasPlayed && <i className="ti ti-check" style={{ fontSize: "var(--fs-xs)" }} />}
+                </span>
                 {hasPlayed ? (
-                  <Badge kind={score > 0 ? "ok" : (score < 0 ? "danger" : "neutral")}>Score: {score}</Badge>
+                  <Badge kind={kind} icon={score > 0 ? "trophy" : null}>{score} pts</Badge>
                 ) : (
-                  <Badge>Unplayed</Badge>
+                  <Badge icon="player-play">Unplayed</Badge>
                 )}
               </div>
             </div>
@@ -150,11 +187,7 @@ function App() {
   }
 
   if (!authChecked) {
-    return (
-      <div className="app-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-        <p style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Loading…</p>
-      </div>
-    );
+    return <CalmLoading label="Checking your session…" />;
   }
 
   if (!auth) {
@@ -163,21 +196,25 @@ function App() {
 
   if (error) {
     return (
-      <div className="app-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-        <div style={{ maxWidth: 360, textAlign: "center", padding: "2rem" }}>
-          <p style={{ fontSize: 13, color: "var(--text-danger)", marginBottom: 8 }}>{error}</p>
-          <button className="btn-primary" onClick={() => window.location.reload()}>Retry</button>
+      <div className="app-shell center" style={{ minHeight: "60vh" }}>
+        <div className="card stack" style={{ maxWidth: 420, gap: "var(--sp-4)" }}>
+          <div className="callout" role="alert" style={{ background: "var(--bg-danger)", borderColor: "var(--border-danger)" }}>
+            <i className="ti ti-alert-triangle" style={{ color: "var(--text-danger)" }} aria-hidden="true" />
+            <div className="stack" style={{ gap: "var(--sp-1)" }}>
+              <span className="badge badge--danger" style={{ alignSelf: "flex-start" }}>Error</span>
+              <span style={{ color: "var(--text-danger)" }}>{error}</span>
+            </div>
+          </div>
+          <button className="btn-primary" onClick={() => window.location.reload()} style={{ alignSelf: "center" }}>
+            <i className="ti ti-refresh" aria-hidden="true" /> Retry
+          </button>
         </div>
       </div>
     );
   }
 
   if (!profiles) {
-    return (
-      <div className="app-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-        <p style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Loading profiles…</p>
-      </div>
-    );
+    return <CalmLoading label="Loading applicant files…" />;
   }
 
   const profile = profileIdx !== null ? profiles[profileIdx] : null;
@@ -190,9 +227,13 @@ function App() {
             <div className="brand-mark" aria-hidden="true" />
             <h1>Admissions <em>Oracle</em></h1>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button className="btn-ghost" style={{ fontSize: 12 }} onClick={() => setShowLeaderboard(false)}>← Back</button>
-            <button className="btn-ghost" style={{ fontSize: 12 }} onClick={handleLogout}>Log out</button>
+          <div className="row">
+            <button className="btn-ghost" onClick={() => setShowLeaderboard(false)} aria-label="Back to applicant menu">
+              <i className="ti ti-arrow-left" aria-hidden="true" /> Back
+            </button>
+            <button className="btn-ghost" onClick={handleLogout} aria-label="Log out">
+              <i className="ti ti-logout" aria-hidden="true" /> Log out
+            </button>
           </div>
         </header>
         <LeaderboardScreen username={auth.username} totalPoints={totalPoints} rank={rank} />
@@ -207,8 +248,8 @@ function App() {
           <div className="brand-mark" aria-hidden="true" />
           <h1>Admissions <em>Oracle</em></h1>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button className="btn-ghost" style={{ fontSize: 12, padding: "4px 10px" }} onClick={() => setShowLeaderboard(true)}>
+        <div className="row">
+          <button className="btn-ghost" onClick={() => setShowLeaderboard(true)} aria-label="Open leaderboard">
             <i className="ti ti-trophy" aria-hidden="true" /> Leaderboard
           </button>
           {phase > 0 && profileIdx !== null && (
@@ -218,14 +259,14 @@ function App() {
                 <span className="dot" />
                 <span>Phase {phase} / 4</span>
               </div>
-              <button className="btn-ghost" style={{ fontSize: 12, padding: "4px 10px" }} onClick={goNextProfile}>
+              <button className="btn-ghost" onClick={goNextProfile} aria-label="Back to applicant menu">
                 <i className="ti ti-list" aria-hidden="true" /> Menu
               </button>
             </>
           )}
           <RankChip rank={rank} totalPoints={totalPoints} />
-          <button className="btn-ghost" style={{ fontSize: 12, padding: "4px 10px" }} onClick={handleLogout}>
-            Log out
+          <button className="btn-ghost" onClick={handleLogout} aria-label="Log out">
+            <i className="ti ti-logout" aria-hidden="true" /> Log out
           </button>
         </div>
       </header>
@@ -301,55 +342,73 @@ function LeaderboardScreen({ username, totalPoints, rank }) {
   }
 
   return (
-    <main style={{ maxWidth: 600, margin: "0 auto", padding: "2rem 1rem" }}>
-      <div className="card" style={{ marginBottom: "1.5rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <p style={{ fontSize: 11, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 4 }}>
-              Logged in as <strong>{username}</strong>
-            </p>
-            <p style={{ fontSize: 28, fontWeight: 700 }}>{totalPoints} pts</p>
-            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 2 }}>{rankTitle(totalPoints)}</p>
+    <main className="fade-in" style={{ maxWidth: 640, margin: "0 auto" }}>
+      <div className="card" style={{ marginBottom: "var(--sp-5)" }}>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "var(--sp-4)" }}>
+          <div className="stack" style={{ gap: "var(--sp-1)" }}>
+            <span className="label">Logged in as <span className="accent-text">{username}</span></span>
+            <span className="num" style={{ fontSize: "var(--fs-h2)", fontWeight: 700, lineHeight: 1 }}>{totalPoints} pts</span>
+            <span className="muted">{rankTitle(totalPoints)}</span>
           </div>
           {stats && (
-            <div style={{ display: "flex", gap: 20 }}>
-              <div style={{ textAlign: "right" }}>
-                <p style={{ fontSize: 20, fontWeight: 600 }}>{stats.profileCount}</p>
-                <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>cases</p>
+            <div className="row" style={{ gap: "var(--sp-5)" }}>
+              <div className="metric" style={{ alignItems: "flex-end" }}>
+                <span className="v">{stats.profileCount}</span>
+                <span className="k">cases</span>
               </div>
-              <div style={{ textAlign: "right" }}>
-                <p style={{ fontSize: 20, fontWeight: 600 }}>{stats.uniquePlayers}</p>
-                <p style={{ fontSize: 11, color: "var(--text-tertiary)" }}>players</p>
+              <div className="metric" style={{ alignItems: "flex-end" }}>
+                <span className="v">{stats.uniquePlayers}</span>
+                <span className="k">players</span>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      <h2 style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Global leaderboard</h2>
-      {!rows && <p style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Loading…</p>}
-      {rows && rows.length === 0 && <p style={{ fontSize: 13, color: "var(--text-tertiary)" }}>No scores yet — be the first!</p>}
+      <div className="section-head">
+        <div className="title-block">
+          <span className="eyebrow">Standings</span>
+          <h2>Global leaderboard</h2>
+        </div>
+      </div>
+
+      {!rows && <CalmLoading label="Loading standings…" minHeight="20vh" />}
+      {rows && rows.length === 0 && (
+        <div className="card center" style={{ flexDirection: "column", gap: "var(--sp-2)", padding: "var(--sp-6)", textAlign: "center" }}>
+          <i className="ti ti-trophy" aria-hidden="true" style={{ fontSize: 28, color: "var(--text-tertiary)" }} />
+          <p className="muted" style={{ margin: 0 }}>No scores yet — be the first!</p>
+        </div>
+      )}
       {rows && rows.length > 0 && (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           {rows.map((row, i) => {
             const isYou = row.username === username;
+            const top3 = i < 3;
             return (
-              <div key={row.username} style={{
-                display: "flex", alignItems: "center",
-                padding: "10px 1.25rem",
-                borderBottom: i < rows.length - 1 ? "0.5px solid var(--border-light)" : "none",
-                background: isYou ? "var(--bg-info-subtle)" : "transparent",
-                gap: 12,
-              }}>
-                <span style={{ width: 24, fontSize: 13, fontWeight: 600, color: i < 3 ? "var(--text-warning)" : "var(--text-tertiary)", textAlign: "right", flexShrink: 0 }}>
+              <div
+                key={row.username}
+                className="row"
+                style={{
+                  padding: "var(--sp-3) var(--sp-5)",
+                  borderBottom: i < rows.length - 1 ? "1px solid var(--border-1)" : "none",
+                  background: isYou ? "var(--bg-info-subtle)" : "transparent",
+                  flexWrap: "nowrap",
+                  gap: "var(--sp-3)",
+                }}
+              >
+                <span
+                  className={`badge ${top3 ? "badge--warn" : "badge--neutral"}`}
+                  style={{ minWidth: 30, justifyContent: "center", fontFamily: "var(--font-mono)" }}
+                  aria-label={`Rank ${i + 1}`}
+                >
                   {i + 1}
                 </span>
-                <span style={{ flex: 1, fontSize: 13, fontWeight: isYou ? 600 : 400 }}>
+                <span className="grow" style={{ fontWeight: isYou ? 600 : 400 }}>
                   {row.username}
-                  {isYou && <span style={{ fontSize: 11, color: "var(--text-info)", marginLeft: 6 }}>you</span>}
+                  {isYou && <span className="chip" style={{ marginLeft: "var(--sp-2)" }}>you</span>}
                 </span>
-                <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{row.games} cases</span>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>{row.total} pts</span>
+                <span className="muted" style={{ fontSize: "var(--fs-sm)" }}>{row.games} cases</span>
+                <span className="num" style={{ fontWeight: 600 }}>{row.total} pts</span>
               </div>
             );
           })}

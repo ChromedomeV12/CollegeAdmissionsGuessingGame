@@ -5,7 +5,7 @@ const { useState, useEffect, useRef, useMemo } = React;
 function Badge({ kind = "neutral", children, icon }) {
   return (
     <span className={`badge badge--${kind}`}>
-      {icon ? <i className={`ti ti-${icon}`} style={{ fontSize: 12 }} /> : null}
+      {icon ? <i className={`ti ti-${icon}`} style={{ fontSize: "var(--fs-sm)" }} /> : null}
       {children}
     </span>
   );
@@ -25,13 +25,22 @@ function Pill({ active, onClick, children, disabled }) {
   );
 }
 
-function Btn({ onClick, children, variant, disabled, icon, iconRight }) {
+function Btn({ onClick, children, variant, disabled, icon, iconRight, ariaLabel, title }) {
   const cls = "btn" + (variant === "ghost" ? " btn--ghost" : "");
+  // Icon-only buttons (no text children) must expose an accessible name.
+  const iconOnly = !children;
   return (
-    <button type="button" className={cls} onClick={onClick} disabled={disabled}>
-      {icon ? <i className={`ti ti-${icon}`} style={{ fontSize: 14 }} /> : null}
+    <button
+      type="button"
+      className={cls}
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={iconOnly ? (ariaLabel || title || undefined) : ariaLabel}
+      title={title}
+    >
+      {icon ? <i className={`ti ti-${icon}`} style={{ fontSize: "var(--fs-md)" }} /> : null}
       {children}
-      {iconRight ? <i className={`ti ti-${iconRight}`} style={{ fontSize: 14 }} /> : null}
+      {iconRight ? <i className={`ti ti-${iconRight}`} style={{ fontSize: "var(--fs-md)" }} /> : null}
     </button>
   );
 }
@@ -65,7 +74,7 @@ function Stepper({ phase /* 1..4 */ }) {
           return <div key={i} className={cls} />;
         })}
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: -16, marginBottom: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "calc(-1 * var(--sp-4))", marginBottom: "var(--sp-4)" }}>
         {labels.map((l, i) => (
           <span
             key={l}
@@ -121,12 +130,12 @@ function RankChip({ rank, totalPoints }) {
     <div
       title={`${rank.current.name} · ${totalPoints} pts`}
       style={{
-        display: "inline-flex", alignItems: "center", gap: 8,
-        padding: "5px 12px 5px 8px",
+        display: "inline-flex", alignItems: "center", gap: "var(--sp-2)",
+        padding: "var(--sp-1) var(--sp-3) var(--sp-1) var(--sp-2)",
         borderRadius: "var(--r-pill)",
         background: "var(--bg-surface)",
-        border: "0.5px solid var(--border-1)",
-        fontSize: 12,
+        border: "1px solid var(--border-1)",
+        fontSize: "var(--fs-sm)",
         whiteSpace: "nowrap"
       }}
     >
@@ -135,7 +144,7 @@ function RankChip({ rank, totalPoints }) {
         background: "var(--accent-info-bg)", color: "var(--accent-info-fg)",
         display: "inline-flex", alignItems: "center", justifyContent: "center"
       }}>
-        <i className={`ti ti-${rank.current.icon}`} style={{ fontSize: 13 }} />
+        <i className={`ti ti-${rank.current.icon}`} style={{ fontSize: "var(--fs-base)" }} />
       </span>
       <span style={{ color: "var(--text-secondary)" }}>{rank.current.name}</span>
       <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-tertiary)" }}>·</span>
@@ -150,13 +159,13 @@ function RankProgressBar({ rank, totalPoints }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
           <span style={{
             width: 26, height: 26, borderRadius: "50%",
             background: "var(--accent-info-bg)", color: "var(--accent-info-fg)",
             display: "inline-flex", alignItems: "center", justifyContent: "center"
           }}>
-            <i className={`ti ti-${rank.current.icon}`} style={{ fontSize: 14 }} />
+            <i className={`ti ti-${rank.current.icon}`} style={{ fontSize: "var(--fs-md)" }} />
           </span>
           <span style={{ fontFamily: "var(--font-serif)", fontSize: 18, letterSpacing: "-0.01em" }}>
             {rank.current.name}
@@ -176,7 +185,7 @@ function RankProgressBar({ rank, totalPoints }) {
           transition: "width 700ms cubic-bezier(.2,.7,.2,1)"
         }} />
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "var(--sp-1)" }}>
         <span className="label" style={{ color: "var(--text-tertiary)" }}>{rank.floor} pts</span>
         <span className="label" style={{ color: "var(--text-tertiary)" }}>
           {rank.next ? `${rank.next.min} pts` : "—"}

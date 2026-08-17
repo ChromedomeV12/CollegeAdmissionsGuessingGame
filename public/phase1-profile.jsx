@@ -17,22 +17,16 @@ function Phase1Profile({ profile, onStart, profileIdx, profileCount }) {
 
       <div className="card" style={{ padding: 0 }}>
         {/* header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "0.5px solid var(--border-1)" }}>
-          <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-            <div>
-              <div className="label" style={{ marginBottom: 4 }}>Applicant {String(profileIdx + 1).padStart(2, "0")} / {String(profileCount).padStart(2, "0")}</div>
-              <div style={{ fontFamily: "var(--font-serif)", fontSize: 22, letterSpacing: "-0.01em" }}>
-                {profile.id}
-              </div>
-            </div>
+        <div className="section-head" style={{ padding: "var(--sp-4) var(--sp-5)", borderBottom: "1px solid var(--border-1)", marginBottom: 0 }}>
+          <div className="title-block">
+            <span className="eyebrow">Applicant {String(profileIdx + 1).padStart(2, "0")} / {String(profileCount).padStart(2, "0")}</span>
+            <h2>{profile.id}</h2>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <Btn onClick={onStart} iconRight="arrow-right">Start guessing</Btn>
-          </div>
+          <Btn onClick={onStart} iconRight="arrow-right">Start guessing</Btn>
         </div>
 
         {/* tabs */}
-        <div style={{ padding: "0 20px" }}>
+        <div style={{ padding: "0 var(--sp-5)" }}>
           <Tabs
             active={tab}
             onChange={setTab}
@@ -44,7 +38,7 @@ function Phase1Profile({ profile, onStart, profileIdx, profileCount }) {
           />
         </div>
 
-        <div style={{ padding: "18px 20px 18px" }}>
+        <div style={{ padding: "var(--sp-4) var(--sp-5)" }}>
           {tab === "overview" && <OverviewTab d={d} />}
           {tab === "academics" && (
             <AcademicsTab
@@ -54,24 +48,24 @@ function Phase1Profile({ profile, onStart, profileIdx, profileCount }) {
           )}
           {tab === "ecs" && <ECsTab ecs={ecs} />}
         </div>
-
       </div>
     </div>
   );
 }
 
 function OverviewTab({ d }) {
+  const m = (x) => x ? x : <span className="muted">—</span>;
   const rows = [
-    ["Gender", d.gender || "—"],
-    ["Ethnicity", d.ethnicity || "—"],
-    ["School type", d.school_type || "—"],
-    ["Region", d.school_region || "—"],
-    ["Classification", d.school_classification || "—"],
-    ["Income level", d.ses || "—"]
+    ["Gender", m(d.gender)],
+    ["Ethnicity", m(d.ethnicity)],
+    ["School type", m(d.school_type)],
+    ["Region", m(d.school_region)],
+    ["Classification", m(d.school_classification)],
+    ["Income level", m(d.ses)]
   ];
   return (
     <div className="fade-in">
-      <dl className="deflist" style={{ marginBottom: 14 }}>
+      <dl className="deflist" style={{ marginBottom: "var(--sp-3)" }}>
         {rows.map(([k, v]) => (
           <React.Fragment key={k}>
             <dt>{k}</dt>
@@ -79,7 +73,7 @@ function OverviewTab({ d }) {
           </React.Fragment>
         ))}
       </dl>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="row" style={{ gap: "var(--sp-2)" }}>
         <Badge kind={d.legacy_status ? "info" : "neutral"} icon={d.legacy_status ? "check" : "minus"}>
           Legacy {d.legacy_status ? "yes" : "no"}
         </Badge>
@@ -112,16 +106,16 @@ function AcademicsTab({ sat, act, gpa, rigor, chartMode, setChartMode }) {
 
   return (
     <div className="fade-in">
-      <div className={"grid " + (act ? "grid-2" : "grid-3")} style={{ marginBottom: 18 }}>
+      <div className={"grid " + (act ? "grid-2" : "grid-3")} style={{ marginBottom: "var(--sp-4)" }}>
         <div className="card">
           <div className="metric">
             <span className="k">SAT superscore</span>
             <span className="v">
-              {sat ? sat.superscore_total : <span style={{ color: "var(--text-tertiary)" }}>—</span>}
+              {sat ? sat.superscore_total : <span className="muted">—</span>}
               {sat ? <span className="sub"> / 1600</span> : null}
             </span>
             {sat && sat.superscore_breakdown && (
-              <span className="label" style={{ color: "var(--text-tertiary)" }}>
+              <span className="label">
                 M {sat.superscore_breakdown.math} · EBRW {sat.superscore_breakdown.ebrw}
               </span>
             )}
@@ -133,7 +127,7 @@ function AcademicsTab({ sat, act, gpa, rigor, chartMode, setChartMode }) {
               <span className="k">ACT composite</span>
               <span className="v">{act.composite} <span className="sub">/ 36</span></span>
               {act.breakdown && (
-                <span className="label" style={{ color: "var(--text-tertiary)" }}>
+                <span className="label">
                   E {act.breakdown.english} · M {act.breakdown.math} · R {act.breakdown.reading} · S {act.breakdown.science}
                 </span>
               )}
@@ -143,14 +137,14 @@ function AcademicsTab({ sat, act, gpa, rigor, chartMode, setChartMode }) {
         <div className="card">
           <div className="metric">
             <span className="k">GPA (unweighted)</span>
-            <span className="v">{gpa.unweighted ?? "—"} <span className="sub">/ {gpa.unweighted_scale ?? "—"}</span></span>
+            <span className="v">{gpa.unweighted ?? <span className="muted">—</span>} <span className="sub">/ {gpa.unweighted_scale ?? "—"}</span></span>
           </div>
         </div>
         <div className="card">
           <div className="metric">
             <span className="k">Rigor</span>
             <span className="v">{rigor.total_ap_courses ?? 0} <span className="sub">APs</span></span>
-            <span className="label" style={{ color: "var(--text-tertiary)" }}>
+            <span className="label">
               + {rigor.total_post_ap_courses ?? 0} post-AP · {rigor.total_honors_courses ?? 0} honors
             </span>
           </div>
@@ -158,11 +152,11 @@ function AcademicsTab({ sat, act, gpa, rigor, chartMode, setChartMode }) {
       </div>
 
       {/* AP chart */}
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+      <div className="card" style={{ marginBottom: "var(--sp-3)" }}>
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: "var(--sp-3)" }}>
           <div>
             <div className="label">AP score breakdown</div>
-            <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 2 }}>
+            <div className="muted" style={{ fontSize: "var(--fs-base)", marginTop: "var(--sp-1)" }}>
               {apCourses.filter(c => c.score != null).length} reported · {apCourses.filter(c => c.score == null).length} pending
             </div>
           </div>
@@ -177,7 +171,7 @@ function AcademicsTab({ sat, act, gpa, rigor, chartMode, setChartMode }) {
 
       {/* Course history table */}
       <div className="card">
-        <div className="label" style={{ marginBottom: 8 }}>Course history</div>
+        <div className="label" style={{ marginBottom: "var(--sp-2)" }}>Course history</div>
         <table className="course-table">
           <thead>
             <tr>
@@ -193,9 +187,9 @@ function AcademicsTab({ sat, act, gpa, rigor, chartMode, setChartMode }) {
                 <tr key={yr + i}>
                   <td className="year-cell">{i === 0 ? yr : ""}</td>
                   <td>{c.name}</td>
-                  <td style={{ color: "var(--text-tertiary)" }}>{c.level}</td>
-                  <td style={{ textAlign: "right", fontFamily: "var(--font-mono)" }}>
-                    {c.score == null ? <span style={{ color: "var(--text-tertiary)" }}>—</span> : c.score}
+                  <td className="muted">{c.level}</td>
+                  <td className="num" style={{ textAlign: "right", fontFamily: "var(--font-mono)" }}>
+                    {c.score == null ? <span className="muted">—</span> : c.score}
                   </td>
                 </tr>
               ))
@@ -203,7 +197,7 @@ function AcademicsTab({ sat, act, gpa, rigor, chartMode, setChartMode }) {
           </tbody>
         </table>
         {rigor.course_load_notes && (
-          <div style={{ marginTop: 10, fontSize: 13, color: "var(--text-secondary)", fontStyle: "italic" }}>
+          <div className="muted" style={{ marginTop: "var(--sp-3)", fontSize: "var(--fs-base)", fontStyle: "italic" }}>
             {rigor.course_load_notes}
           </div>
         )}
@@ -231,11 +225,11 @@ function APBars({ courses }) {
           </div>
         );
       })}
-      <div style={{ display: "flex", gap: 14, marginTop: 12 }}>
+      <div className="row" style={{ marginTop: "var(--sp-3)" }}>
         <LegendDot color={AP_COLORS[5]} label="Score 5" />
         <LegendDot color={AP_COLORS[4]} label="Score 4" />
         <LegendDot color={AP_COLORS[3]} label="Score 3" />
-        <LegendDot color="var(--border-1)" label="Pending" />
+        <LegendDot color="var(--border-2)" label="Pending" />
       </div>
     </div>
   );
@@ -243,7 +237,7 @@ function APBars({ courses }) {
 
 function LegendDot({ color, label }) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)" }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--sp-1)", fontSize: "var(--fs-sm)", color: "var(--text-secondary)" }}>
       <span style={{ width: 10, height: 10, borderRadius: 2, background: color, display: "inline-block" }} />
       {label}
     </span>
@@ -261,7 +255,7 @@ function APDonut({ courses }) {
     { key: 5, color: AP_COLORS[5], val: counts[5] },
     { key: 4, color: AP_COLORS[4], val: counts[4] },
     { key: 3, color: AP_COLORS[3], val: counts[3] },
-    { key: "pending", color: "#cccccc", val: counts.pending }
+    { key: "pending", color: "var(--border-2)", val: counts.pending }
   ].filter(s => s.val > 0);
 
   const r = 60, cx = 70, cy = 70, stroke = 18;
@@ -296,7 +290,7 @@ function APDonut({ courses }) {
         <div><span className="sw" style={{ background: AP_COLORS[5] }} /> Score 5 · {counts[5]}</div>
         <div><span className="sw" style={{ background: AP_COLORS[4] }} /> Score 4 · {counts[4]}</div>
         <div><span className="sw" style={{ background: AP_COLORS[3] }} /> Score 3 · {counts[3]}</div>
-        <div><span className="sw" style={{ background: "#cccccc" }} /> Pending · {counts.pending}</div>
+        <div><span className="sw" style={{ background: "var(--border-2)" }} /> Pending · {counts.pending}</div>
       </div>
     </div>
   );
@@ -309,9 +303,9 @@ function ECsTab({ ecs }) {
         <div className="ec-item" key={e.id}>
           <div className="num">{String(i + 1).padStart(2, "0")}</div>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div className="row" style={{ gap: "var(--sp-2)" }}>
               <span className="title">{e.title}</span>
-              <span className="label" style={{ color: "var(--text-tertiary)" }}>{e.category}</span>
+              <span className="label">{e.category}</span>
             </div>
             {e.description && <div className="desc">{e.description}</div>}
             {e.achievements && e.achievements.length > 0 && (

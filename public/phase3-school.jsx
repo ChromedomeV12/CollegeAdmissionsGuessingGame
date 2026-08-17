@@ -182,7 +182,7 @@ function Phase3School({
         <span className="sub">Tap the schools you think were admits.</span>
       </div>
 
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 16 }}>
+      <div className="row" style={{ flexWrap: "wrap", gap: "var(--sp-3)", marginBottom: "var(--sp-4)" }}>
         <Badge kind="info">University tier · {universityTierPick}</Badge>
         {noLacClaim
           ? <Badge kind="info">LAC · Claimed no admit</Badge>
@@ -195,11 +195,11 @@ function Phase3School({
         data={uni} selections={schoolSelections} onToggle={toggle}
       />
 
-      <div style={{ height: 18 }} />
+      <div style={{ height: "var(--sp-5)" }} />
 
       {noLacClaim ? (
         <div className="card">
-          <div style={{ fontFamily: "var(--font-serif)", fontSize: 20, letterSpacing: "-0.01em", marginBottom: 6 }}>Liberal Arts Colleges</div>
+          <div style={{ fontFamily: "var(--font-serif)", fontSize: 20, letterSpacing: "-0.01em", marginBottom: "var(--sp-2)" }}>Liberal Arts Colleges</div>
           <div className="callout">
             <i className="ti ti-info-circle" />
             <div>You claimed this applicant was not admitted to any LAC. The LAC schools section is skipped — you'll be scored on that claim at the reveal.</div>
@@ -213,21 +213,26 @@ function Phase3School({
         />
       )}
 
-      <div className="card" style={{ marginTop: 18 }}>
-        <div className="label" style={{ marginBottom: 8 }}>Scoring</div>
-        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13 }}>
+      <div className="card" style={{ marginTop: "var(--sp-5)" }}>
+        <div className="label" style={{ marginBottom: "var(--sp-2)" }}>Scoring</div>
+        <div className="row" style={{ flexWrap: "wrap", gap: "var(--sp-5)", fontSize: "var(--fs-base)" }}>
           <span><i className="ti ti-check" style={{ color: "var(--accent-ok-fg)", marginRight: 6 }} />Correct selection <span style={{ color: "var(--accent-ok-fg)", fontFamily: "var(--font-mono)" }}>+10</span></span>
           <span><i className="ti ti-x" style={{ color: "var(--accent-danger-fg)", marginRight: 6 }} />Wrong selection <span style={{ color: "var(--accent-danger-fg)", fontFamily: "var(--font-mono)" }}>−2</span></span>
           <span><i className="ti ti-check" style={{ color: "var(--accent-ok-fg)", marginRight: 6 }} />Correct Uni tier <span style={{ color: "var(--accent-ok-fg)", fontFamily: "var(--font-mono)" }}>+10</span></span>
           <span><i className="ti ti-check" style={{ color: "var(--accent-ok-fg)", marginRight: 6 }} />Correct LAC tier <span style={{ color: "var(--accent-ok-fg)", fontFamily: "var(--font-mono)" }}>+10</span></span>
           <span><i className="ti ti-alert-triangle" style={{ color: "var(--accent-warn-fg)", marginRight: 6 }} />Wrong tier band <span style={{ color: "var(--accent-danger-fg)", fontFamily: "var(--font-mono)" }}>−5</span></span>
         </div>
-        <div className="label" style={{ marginTop: 8, color: "var(--text-tertiary)" }}>*−2 penalty only applies if the chosen tier band is correct.</div>
+        <div className="label" style={{ marginTop: "var(--sp-2)", color: "var(--text-tertiary)" }}>*−2 penalty only applies if the chosen tier band is correct.</div>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 22 }}>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: "var(--sp-6)" }}>
         <Btn variant="ghost" onClick={onBack} icon="arrow-left">Change tiers</Btn>
-        <Btn onClick={onReveal} iconRight="sparkles">Reveal results</Btn>
+        <div className="row" style={{ alignItems: "center", gap: "var(--sp-3)" }}>
+          <span className="label" style={{ color: "var(--text-tertiary)" }} aria-live="polite">
+            {schoolSelections.size} selected
+          </span>
+          <Btn onClick={onReveal} iconRight="sparkles" ariaLabel="Reveal results">Reveal results</Btn>
+        </div>
       </div>
     </div>
   );
@@ -239,29 +244,31 @@ function SchoolSection({ title, subtitle, tier, kind, data, selections, onToggle
 
   return (
     <div className="card">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline", marginBottom: "var(--sp-3)" }}>
         <div>
           <div style={{ fontFamily: "var(--font-serif)", fontSize: 20, letterSpacing: "-0.01em" }}>{title}</div>
-          <div className="label" style={{ marginTop: 2 }}>{subtitle}</div>
+          <div className="label" style={{ marginTop: "var(--sp-1)" }}>{subtitle}</div>
         </div>
-        <div className="label" style={{ color: "var(--text-tertiary)" }}>
+        <span className="label" style={{ color: "var(--text-tertiary)" }}>
           {data.all.length} schools in band
-        </div>
+        </span>
       </div>
 
       {data.all.length === 0 ? (
         <div className="callout">
           <i className="ti ti-info-circle" />
-          <div>No schools defined in this band.</div>
+          <div>No schools defined in this band — pick another tier to see options.</div>
         </div>
       ) : (
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-          gap: 8, marginTop: 12,
-          opacity: extraActive ? 0.4 : 1,
-          pointerEvents: extraActive ? "none" : "auto"
-        }}>
+        <div
+          className="grid"
+          style={{
+            gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+            gap: "var(--sp-2)", marginTop: "var(--sp-3)",
+            opacity: extraActive ? 0.4 : 1,
+            pointerEvents: extraActive ? "none" : "auto"
+          }}
+        >
           {data.all.map(a => {
             const selected = selections.has(a.key);
             return (
@@ -281,13 +288,15 @@ function SchoolSection({ title, subtitle, tier, kind, data, selections, onToggle
           className={"school-card" + (extraActive ? " is-selected" : "")}
           onClick={() => onToggle(extraOption.key)}
           role="button" tabIndex={0}
+          aria-pressed={extraActive ? "true" : "false"}
+          aria-label={extraOption.label}
           onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(extraOption.key); } }}
-          style={{ marginTop: 12, borderStyle: "dashed", justifyContent: "flex-start", gap: 12 }}
+          style={{ marginTop: "var(--sp-3)", borderStyle: "dashed", justifyContent: "flex-start", gap: "var(--sp-3)" }}
         >
           <span className="check">{extraActive ? <i className="ti ti-check" /> : null}</span>
           <div>
             <div className="name">{extraOption.label}</div>
-            <div className="label" style={{ marginTop: 2, color: "var(--text-tertiary)" }}>{extraOption.hint}</div>
+            <div className="label" style={{ marginTop: "var(--sp-1)", color: "var(--text-tertiary)" }}>{extraOption.hint}</div>
           </div>
         </div>
       )}
@@ -298,6 +307,7 @@ function SchoolSection({ title, subtitle, tier, kind, data, selections, onToggle
 // ─── SchoolCard with logo ─────────────────────────────────────────────────────
 function SchoolCard({ school, selected, onToggle }) {
   const [pressed, setPressed] = React.useState(false);
+  const domain = getSchoolDomain(school.name);
 
   function handleClick() {
     setPressed(true);
@@ -310,18 +320,26 @@ function SchoolCard({ school, selected, onToggle }) {
       className={"school-card" + (selected ? " is-selected" : "")}
       onClick={handleClick}
       role="button" tabIndex={0}
+      aria-pressed={selected ? "true" : "false"}
+      aria-label={`${selected ? "Deselect" : "Select"} ${school.name}`}
       onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleClick(); } }}
-      style={{
-        display: "flex", alignItems: "center", gap: 9,
-        transform: pressed ? "scale(0.96)" : "scale(1)",
-        transition: "transform 0.15s cubic-bezier(.34,1.56,.64,1)",
-      }}
+      style={pressed ? {
+        transform: "scale(0.97)",
+        transition: "transform 150ms cubic-bezier(.34,1.56,.64,1)",
+      } : undefined}
     >
-      <SchoolLogo name={school.name} size={26} />
-      <span className="name" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {school.name}
-      </span>
-      <span className="check" style={{ flexShrink: 0 }}>
+      <SchoolLogo name={school.name} size={28} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="name" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {school.name}
+        </div>
+        {domain ? (
+          <div className="label" style={{ marginTop: "var(--sp-1)", color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {domain}
+          </div>
+        ) : null}
+      </div>
+      <span className="check" style={{ flexShrink: 0 }} aria-hidden="true">
         {selected ? <i className="ti ti-check" /> : null}
       </span>
     </div>
