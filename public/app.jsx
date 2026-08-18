@@ -24,14 +24,27 @@ function CalmLoading({ label = "Loading…", minHeight = "60vh" }) {
 }
 
 function Phase0Menu({ profiles, onSelectProfile, scoresByProfile }) {
+  const completed = profiles.filter(profile => scoresByProfile[profile.id] !== undefined).length;
   return (
     <div className="fade-in" data-screen-label="00 Menu">
+      <section className="library-intro">
+        <div>
+          <span className="eyebrow">Admissions reading room</span>
+          <h2>Read the file.<br />Make the call.</h2>
+          <p>Eight compact applicant cases. No endless feed, no public usernames, just the evidence and your prediction.</p>
+        </div>
+        <div className="library-stats" aria-label="Case library progress">
+          <div><strong className="num">{profiles.length}</strong><span>Seed cases</span></div>
+          <div><strong className="num">{completed}</strong><span>Completed</span></div>
+          <div><strong className="num">{profiles.length - completed}</strong><span>Unread</span></div>
+        </div>
+      </section>
       <div className="section-head">
         <div className="title-block">
-          <span className="eyebrow">Casework</span>
-          <h2>Select an Applicant</h2>
+          <span className="eyebrow">Case library</span>
+          <h2>Select an applicant</h2>
         </div>
-        <span className="sub">Choose a profile to evaluate.</span>
+        <span className="sub">Each file hides the final decisions until the reveal.</span>
       </div>
       <div className="grid grid-2 stagger">
         {profiles.map((p, i) => {
@@ -97,6 +110,7 @@ function App() {
   const [noLacClaim, setNoLacClaim] = React.useState(false);
   const [scoresByProfile, setScoresByProfile] = React.useState({});
   const [showLeaderboard, setShowLeaderboard] = React.useState(false);
+  const [showSubmission, setShowSubmission] = React.useState(() => new URLSearchParams(window.location.search).has("submission_status"));
   const [fullProfile, setFullProfile] = React.useState(null);
 
   React.useEffect(() => {
@@ -219,6 +233,29 @@ function App() {
 
   const profile = profileIdx !== null ? profiles[profileIdx] : null;
 
+  if (showSubmission) {
+    return (
+      <div className="app-shell">
+        <header className="topbar">
+          <div className="brand">
+            <div className="brand-mark" aria-hidden="true" />
+            <h1>Admissions <em>Oracle</em></h1>
+          </div>
+          <div className="row">
+            <button className="btn-ghost" onClick={() => setShowSubmission(false)} aria-label="Back to applicant menu">
+              <i className="ti ti-arrow-left" aria-hidden="true" /> Game
+            </button>
+            <RankChip rank={rank} totalPoints={totalPoints} />
+            <button className="btn-ghost" onClick={handleLogout} aria-label="Log out">
+              <i className="ti ti-logout" aria-hidden="true" /> Log out
+            </button>
+          </div>
+        </header>
+        <SubmissionScreen token={auth.token} onBack={() => setShowSubmission(false)} />
+      </div>
+    );
+  }
+
   if (showLeaderboard) {
     return (
       <div className="app-shell">
@@ -230,6 +267,9 @@ function App() {
           <div className="row">
             <button className="btn-ghost" onClick={() => setShowLeaderboard(false)} aria-label="Back to applicant menu">
               <i className="ti ti-arrow-left" aria-hidden="true" /> Back
+            </button>
+            <button className="btn-ghost" onClick={() => { setShowLeaderboard(false); setShowSubmission(true); }} aria-label="Submit your Reddit post">
+              <i className="ti ti-file-upload" aria-hidden="true" /> Submit a post
             </button>
             <button className="btn-ghost" onClick={handleLogout} aria-label="Log out">
               <i className="ti ti-logout" aria-hidden="true" /> Log out
@@ -249,6 +289,9 @@ function App() {
           <h1>Admissions <em>Oracle</em></h1>
         </div>
         <div className="row">
+          <button className="btn-ghost" onClick={() => setShowSubmission(true)} aria-label="Submit your Reddit post">
+            <i className="ti ti-file-upload" aria-hidden="true" /> Submit a post
+          </button>
           <button className="btn-ghost" onClick={() => setShowLeaderboard(true)} aria-label="Open leaderboard">
             <i className="ti ti-trophy" aria-hidden="true" /> Leaderboard
           </button>

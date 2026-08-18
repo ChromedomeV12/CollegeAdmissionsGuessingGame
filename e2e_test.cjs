@@ -93,7 +93,13 @@ async function main() {
   // Spawn server.js with PORT env. type:module ESM — just `node server.js`.
   const serverProc = spawn("node", ["server.js"], {
     cwd: REPO_DIR,
-    env: { ...process.env, PORT: String(port) },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      REDDIT_CLIENT_ID: "",
+      REDDIT_CLIENT_SECRET: "",
+      REDDIT_REDIRECT_URI: "",
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   serverProc.stdout.on("data", (d) => (serverStdout += d.toString()));
@@ -119,6 +125,11 @@ async function main() {
     const profiles = await fetchJson(port, "/api/profiles");
     if (!Array.isArray(profiles) || profiles.length === 0)
       throw new Error(`/api/profiles returned no profiles: ${JSON.stringify(profiles).slice(0, 200)}`);
+    if (profiles.some((profile) => profile && ("source" in profile || "application_results" in profile)))
+      throw new Error("Profile list leaked source metadata or hidden results");
+    const fullProfile = await fetchJson(port, `/api/profiles/${encodeURIComponent(profiles[0].id)}`);
+    if (fullProfile && "source" in fullProfile)
+      throw new Error("Full profile endpoint leaked source metadata");
     log("PASS /api/profiles returned", profiles.length, "profiles");
 
     browser = await puppeteer.launch({
@@ -173,6 +184,33 @@ async function main() {
       submitBtn.click(),
     ]);
     log("PASS registered + reached Phase0 menu");
+
+    // ── Step 1b: Consent-first submission center ──────────────────────────
+    await page.evaluate(() => {
+      const button = [...document.querySelectorAll("button")].find((item) => item.textContent.includes("Submit a post"));
+      if (!button) throw new Error("Submit a post navigation button not found");
+      button.click();
+    });
+    await page.waitForSelector('[data-screen-label="Submission Center"]', { timeout: POLL_TIMEOUT_MS });
+    await page.waitForSelector('#reddit-post-url', { timeout: SHORT_TIMEOUT_MS });
+    await page.waitForFunction(
+      () => document.querySelector('[data-screen-label="Submission Center"]')?.textContent.includes("Owner verification needs Reddit API credentials"),
+      { timeout: SHORT_TIMEOUT_MS }
+    );
+    const verifyDisabled = await page.$eval(
+      '[data-screen-label="Submission Center"] button[type="submit"]',
+      (button) => button.disabled
+    );
+    if (!verifyDisabled) throw new Error("Reddit verification submit button should be disabled without OAuth configuration");
+    log("PASS consent-first submission center renders safe disabled state");
+
+    await page.evaluate(() => {
+      const button = [...document.querySelectorAll("button")].find((item) => item.textContent.trim() === "Game");
+      if (!button) throw new Error("Game navigation button not found");
+      button.click();
+    });
+    await page.waitForSelector('[data-screen-label="00 Menu"]', { timeout: POLL_TIMEOUT_MS });
+    log("PASS returned to game from submission center");
 
     // ── Step 2: Select FIRST profile (Phase0Menu) ───────────────────────────
     // app.jsx Phase0Menu: each profile is div.card.school-card with onClick.

@@ -66,23 +66,19 @@ function Tabs({ tabs, active, onChange }) {
 function Stepper({ phase /* 1..4 */ }) {
   const labels = ["Profile", "Tier", "Schools", "Reveal"];
   return (
-    <div>
-      <div className="stepper">
+    <div className="stepper-wrap" aria-label={`Game progress, step ${phase} of 4`}>
+      <div className="stepper" aria-hidden="true">
         {labels.map((_, i) => {
           const n = i + 1;
           const cls = n < phase ? "step done" : n === phase ? "step current" : "step";
           return <div key={i} className={cls} />;
         })}
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "calc(-1 * var(--sp-4))", marginBottom: "var(--sp-4)" }}>
+      <div className="stepper-labels">
         {labels.map((l, i) => (
           <span
             key={l}
-            className="label"
-            style={{
-              color: (i + 1 === phase) ? "var(--text-primary)" : "var(--text-tertiary)",
-              fontWeight: (i + 1 === phase) ? 500 : 400
-            }}
+            className={`label${i + 1 === phase ? " is-current" : ""}`}
           >
             0{i + 1} {l}
           </span>
@@ -127,28 +123,13 @@ function AnimatedNum({ value, duration = 900, format = (n) => Math.round(n).toSt
 
 function RankChip({ rank, totalPoints }) {
   return (
-    <div
-      title={`${rank.current.name} · ${totalPoints} pts`}
-      style={{
-        display: "inline-flex", alignItems: "center", gap: "var(--sp-2)",
-        padding: "var(--sp-1) var(--sp-3) var(--sp-1) var(--sp-2)",
-        borderRadius: "var(--r-pill)",
-        background: "var(--bg-surface)",
-        border: "1px solid var(--border-1)",
-        fontSize: "var(--fs-sm)",
-        whiteSpace: "nowrap"
-      }}
-    >
-      <span style={{
-        width: 22, height: 22, borderRadius: "50%",
-        background: "var(--accent-info-bg)", color: "var(--accent-info-fg)",
-        display: "inline-flex", alignItems: "center", justifyContent: "center"
-      }}>
-        <i className={`ti ti-${rank.current.icon}`} style={{ fontSize: "var(--fs-base)" }} />
+    <div className="rank-chip" title={`${rank.current.name} · ${totalPoints} pts`}>
+      <span className="rank-chip__icon">
+        <i className={`ti ti-${rank.current.icon}`} />
       </span>
-      <span style={{ color: "var(--text-secondary)" }}>{rank.current.name}</span>
-      <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-tertiary)" }}>·</span>
-      <span className="num" style={{ fontFamily: "var(--font-mono)", fontWeight: 500 }}>
+      <span className="rank-chip__name">{rank.current.name}</span>
+      <span className="rank-chip__divider">·</span>
+      <span className="num rank-chip__points">
         {totalPoints >= 0 ? totalPoints : `−${Math.abs(totalPoints)}`} pts
       </span>
     </div>

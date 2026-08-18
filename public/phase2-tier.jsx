@@ -60,7 +60,7 @@ function Phase2Tier({
           <span className="label">Panel A · University tier</span>
           <span className="chip">1 of 5</span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0,1fr))", gap: "var(--sp-2)" }}>
+        <div className="tier-grid tier-grid--uni">
           {T.UNI_TIER_LIST.map(t => (
             <TierPickCard
               key={t}
@@ -78,7 +78,7 @@ function Phase2Tier({
           <span className="label">Panel B · Liberal Arts College tier</span>
           <span className="chip">1 of 3</span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: "var(--sp-2)", opacity: noLacClaim ? 0.4 : 1, pointerEvents: noLacClaim ? "none" : "auto" }}>
+        <div className="tier-grid tier-grid--lac" aria-disabled={noLacClaim}>
           {T.LAC_TIER_LIST.map(t => (
             <TierPickCard
               key={t}

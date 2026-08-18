@@ -312,7 +312,7 @@ async function runApprove() {
 if (process.argv.includes("--approve")) {
   runApprove().catch(console.error);
 } else {
-  const urlArgIdx = process.argv.indexOf("--url");
-  const url = urlArgIdx !== -1 ? process.argv[urlArgIdx + 1] : null;
-  runScrape(url).catch(console.error);
+  console.error("Bulk and arbitrary-URL scraping is disabled. New posts must enter through the in-app Reddit ownership-verification flow.");
+  console.error("Use `npm run approve` only for drafts that already passed consent and editorial review.");
+  process.exitCode = 1;
 }

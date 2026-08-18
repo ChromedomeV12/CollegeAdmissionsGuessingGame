@@ -9,11 +9,12 @@ contribute code, and the ground rules that keep the project healthy.
    it is licensed to this project under the repository's
    [MIT License](LICENSE). Don't submit code you don't have the right to
    license that way.
-2. **No scraping of private or personal data.** The content pipeline
-   (`npm run scrape`) targets public Reddit posts only. Never add pipelines
-   that ingest private datasets, personally identifying information, or data
-   behind authentication/paywalls. Profiles in `data/profiles.jsonl` must be
-   derived from public posts and pass human review (`npm run approve`).
+2. **Owner-submitted data only.** Do not add bulk subreddit crawlers or
+   arbitrary URL import paths. A Reddit-derived case must have a versioned
+   consent receipt, pass the temporary OAuth ownership check, and complete
+   human anonymization/editorial review before it reaches
+   `data/profiles.jsonl`. Never ingest private data, identifying information,
+   or content behind authentication/paywalls.
 3. **No credentials in git.** Secrets belong in `.env` (already gitignored).
    Never commit API keys, tokens, or database dumps. If you accidentally push
    a secret, rotate it immediately — history rewriting is a last resort.
@@ -35,9 +36,9 @@ contribute code, and the ground rules that keep the project healthy.
    [AGENT_CHECKLIST.md](AGENT_CHECKLIST.md).
 4. **Open a pull request.** Describe what changed and why. Screenshots for UI
    changes. PRs that fail `npm test` won't be merged.
-5. **Data changes** (new profiles): run the scrape → approve pipeline locally
-   and include only the resulting `data/profiles.jsonl` diff. Never hand-edit
-   profile records without review — malformed records crash the game UI.
+5. **Data changes** (new profiles): link the change to an owner-verified
+   submission and document the anonymization review. Include only the approved
+   `data/profiles.jsonl` diff, never raw post content or database files.
 
 ## Reporting issues / security
 

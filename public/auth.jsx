@@ -24,8 +24,8 @@ function AuthScreen({ onLogin }) {
         setError("Passwords don't match.");
         return;
       }
-      if (password.length < 6) {
-        setError("Password must be at least 6 characters.");
+      if (password.length < 8) {
+        setError("Password must be at least 8 characters.");
         return;
       }
     }
@@ -69,106 +69,98 @@ function AuthScreen({ onLogin }) {
   const passwordsMatch = confirmActive && password === confirmPassword;
 
   return (
-    <div className="app-shell center" style={{ minHeight: "100vh", padding: "var(--sp-5)" }}>
-      <div className="card stack" style={{ maxWidth: 380, width: "100%", gap: "var(--sp-5)" }}>
-
-        {/* Brand */}
-        <div className="stack" style={{ alignItems: "center", textAlign: "center", gap: "var(--sp-2)" }}>
+    <div className="app-shell center" data-auth-screen style={{ minHeight: "100vh" }}>
+      <div className="auth-stage fade-in">
+        <section className="auth-intro">
           <div className="brand-mark" aria-hidden="true" />
-          <h1 style={{ fontFamily: "var(--font-serif)", fontWeight: 400, fontSize: "var(--fs-h2)", margin: 0, letterSpacing: "-0.015em" }}>
-            Admissions <em className="accent-text" style={{ fontStyle: "italic" }}>Oracle</em>
-          </h1>
-          <p className="muted" style={{ margin: 0 }}>Predict college admissions results</p>
-        </div>
-
-        {/* Login / Register toggle */}
-        <div className="seg" role="group" aria-label="Authentication mode">
-          <button
-            type="button"
-            aria-pressed={mode === "login"}
-            onClick={() => switchMode("login")}
-          >Log in</button>
-          <button
-            type="button"
-            aria-pressed={mode === "register"}
-            onClick={() => switchMode("register")}
-          >Create account</button>
-        </div>
-
-        {/* Fields */}
-        <div className="stack" style={{ gap: "var(--sp-3)" }}>
-          <div className="stack" style={{ gap: "var(--sp-1)" }}>
-            <label className="label" htmlFor="auth-username">Username</label>
-            <input
-              id="auth-username"
-              type="text"
-              placeholder="your_username"
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              onKeyDown={handleKey}
-              autoFocus
-              autoComplete="username"
-            />
+          <span className="eyebrow">Admissions casework</span>
+          <h1>Read closely.<br />Predict <em>boldly.</em></h1>
+          <p>
+            Study a real applicant file, call the outcome, then see what the admissions process actually rewarded.
+          </p>
+          <div className="auth-docket">
+            <span>Inside each case</span>
+            <strong>Academics · activities · school tiers · final decisions</strong>
           </div>
-          <div className="stack" style={{ gap: "var(--sp-1)" }}>
-            <label className="label" htmlFor="auth-password">Password</label>
-            <input
-              id="auth-password"
-              type="password"
-              placeholder={mode === "register" ? "At least 6 characters" : "Your password"}
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              onKeyDown={handleKey}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-            />
-          </div>
-          {mode === "register" && (
-            <div className="stack" style={{ gap: "var(--sp-1)" }}>
-              <label className="label" htmlFor="auth-confirm">Confirm password</label>
-              <input
-                id="auth-confirm"
-                type="password"
-                placeholder="Same password again"
-                value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)}
-                onKeyDown={handleKey}
-                autoComplete="new-password"
-                aria-describedby="confirm-feedback"
-              />
-              {confirmActive && (
-                <span
-                  id="confirm-feedback"
-                  aria-live="polite"
-                  className={`badge ${passwordsMatch ? "badge--ok" : "badge--danger"}`}
-                  style={{ alignSelf: "flex-start" }}
-                >
-                  <i className={`ti ${passwordsMatch ? "ti-check" : "ti-x"}`} style={{ fontSize: "var(--fs-xs)" }} aria-hidden="true" />
-                  {passwordsMatch ? "Passwords match" : "Passwords don't match"}
-                </span>
+        </section>
+
+        <section className="card auth-panel">
+          <div className="stack" style={{ gap: "var(--sp-5)" }}>
+            <div>
+              <span className="eyebrow">Player access</span>
+              <h2>{mode === "login" ? "Continue your casework" : "Create your reader profile"}</h2>
+              <p className="muted" style={{ margin: 0 }}>
+                {mode === "login" ? "Your scores and rank are waiting." : "Choose a private game username to begin."}
+              </p>
+            </div>
+
+            <div className="seg" role="group" aria-label="Authentication mode">
+              <button type="button" aria-pressed={mode === "login"} onClick={() => switchMode("login")}>Log in</button>
+              <button type="button" aria-pressed={mode === "register"} onClick={() => switchMode("register")}>Create account</button>
+            </div>
+
+            <div className="stack" style={{ gap: "var(--sp-3)" }}>
+              <div className="stack" style={{ gap: "var(--sp-1)" }}>
+                <label className="label" htmlFor="auth-username">Username</label>
+                <input
+                  id="auth-username"
+                  type="text"
+                  placeholder="your_username"
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  onKeyDown={handleKey}
+                  autoFocus
+                  autoComplete="username"
+                />
+              </div>
+              <div className="stack" style={{ gap: "var(--sp-1)" }}>
+                <label className="label" htmlFor="auth-password">Password</label>
+                <input
+                  id="auth-password"
+                  type="password"
+                  placeholder={mode === "register" ? "At least 8 characters" : "Your password"}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  onKeyDown={handleKey}
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
+                />
+              </div>
+              {mode === "register" && (
+                <div className="stack" style={{ gap: "var(--sp-1)" }}>
+                  <label className="label" htmlFor="auth-confirm">Confirm password</label>
+                  <input
+                    id="auth-confirm"
+                    type="password"
+                    placeholder="Same password again"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    onKeyDown={handleKey}
+                    autoComplete="new-password"
+                    aria-describedby="confirm-feedback"
+                  />
+                  {confirmActive && (
+                    <span id="confirm-feedback" aria-live="polite" className={`badge ${passwordsMatch ? "badge--ok" : "badge--danger"}`} style={{ alignSelf: "flex-start" }}>
+                      <i className={`ti ${passwordsMatch ? "ti-check" : "ti-x"}`} aria-hidden="true" />
+                      {passwordsMatch ? "Passwords match" : "Passwords don't match"}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </div>
 
-        {/* Error */}
-        {error && (
-          <div className="callout" role="alert" style={{ background: "var(--bg-danger)", borderColor: "var(--border-danger)" }}>
-            <i className="ti ti-alert-triangle" style={{ color: "var(--text-danger)" }} aria-hidden="true" />
-            <span style={{ color: "var(--text-danger)" }}>{error}</span>
+            {error && (
+              <div className="callout callout--danger" role="alert">
+                <i className="ti ti-alert-triangle" aria-hidden="true" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <button type="button" className="btn-primary" onClick={handleSubmit} disabled={loading} aria-busy={loading} style={{ width: "100%" }}>
+              {loading ? "Please wait…" : mode === "login" ? "Log in" : "Create account"}
+              <i className="ti ti-arrow-right" aria-hidden="true" />
+            </button>
           </div>
-        )}
-
-        {/* Submit */}
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={handleSubmit}
-          disabled={loading}
-          aria-busy={loading}
-          style={{ width: "100%" }}
-        >
-          {loading ? "Please wait…" : mode === "login" ? "Log in" : "Create account"}
-        </button>
+        </section>
       </div>
     </div>
   );

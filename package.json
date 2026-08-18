@@ -4,8 +4,9 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "test": "node e2e_test.cjs",
-    "scrape": "node scripts/scrape.js",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "node --test test/*.test.js",
+    "test:e2e": "node e2e_test.cjs",
     "approve": "node scripts/scrape.js --approve",
     "dev": "node --watch server.js"
   },

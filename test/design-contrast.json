@@ -1,0 +1,25 @@
+{
+  "pairs": [
+    { "fg": "#10243e", "bg": "#ffffff", "role": "body", "fg_name": "primary text", "bg_name": "surface" },
+    { "fg": "#3d5873", "bg": "#ffffff", "role": "body", "fg_name": "secondary text", "bg_name": "surface" },
+    { "fg": "#5d7187", "bg": "#ffffff", "role": "body", "fg_name": "tertiary and placeholder text", "bg_name": "surface" },
+    { "fg": "#10243e", "bg": "#eef4fa", "role": "body", "fg_name": "primary text", "bg_name": "canvas" },
+    { "fg": "#3d5873", "bg": "#eef4fa", "role": "body", "fg_name": "secondary text", "bg_name": "canvas" },
+    { "fg": "#2457f5", "bg": "#ffffff", "role": "body", "fg_name": "link and accent text", "bg_name": "surface" },
+    { "fg": "#ffffff", "bg": "#2457f5", "role": "body", "fg_name": "button text", "bg_name": "cobalt" },
+    { "fg": "#ce3b27", "bg": "#ffffff", "role": "body", "fg_name": "decision signal text", "bg_name": "surface" },
+    { "fg": "#ffffff", "bg": "#ce3b27", "role": "body", "fg_name": "stamp text", "bg_name": "decision signal" },
+    { "fg": "#ffffff", "bg": "#10243e", "role": "body", "fg_name": "inverse text", "bg_name": "ink panel" },
+    { "fg": "#9fb0c2", "bg": "#10243e", "role": "body", "fg_name": "library stat label", "bg_name": "ink panel" },
+    { "fg": "#c7d4e2", "bg": "#10243e", "role": "body", "fg_name": "submission hero copy", "bg_name": "ink panel" },
+    { "fg": "#9bb0c5", "bg": "#10243e", "role": "body", "fg_name": "proof step detail", "bg_name": "ink panel" },
+    { "fg": "#b9cadd", "bg": "#10243e", "role": "body", "fg_name": "authentication intro copy", "bg_name": "ink panel" },
+    { "fg": "#075a8a", "bg": "#e1f1fb", "role": "body", "fg_name": "information text", "bg_name": "information surface" },
+    { "fg": "#0a6848", "bg": "#e0f4ea", "role": "body", "fg_name": "success text", "bg_name": "success surface" },
+    { "fg": "#765000", "bg": "#fff2cf", "role": "body", "fg_name": "warning text", "bg_name": "warning surface" },
+    { "fg": "#922d25", "bg": "#fde9e7", "role": "body", "fg_name": "danger text", "bg_name": "danger surface" },
+    { "fg": "#5d7187", "bg": "#dbe7f2", "role": "ui", "fg_name": "neutral result icon", "bg_name": "neutral result surface" },
+    { "fg": "#7890a8", "bg": "#ffffff", "role": "ui", "fg_name": "control border", "bg_name": "surface" },
+    { "fg": "#2457f5", "bg": "#ffffff", "role": "ui", "fg_name": "focus indicator", "bg_name": "surface" }
+  ]
+}
