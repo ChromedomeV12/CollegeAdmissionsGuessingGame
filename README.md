@@ -31,7 +31,8 @@ This project is co-owned and co-developed by ChromedomeV12 (repo owner) and Maso
 | GET | `/api/stats` | — | Aggregate play stats. |
 | GET | `/api/submissions/config` | Bearer | Public-safe configuration state and current consent version. |
 | GET | `/api/submissions` | Bearer | The current user's private submission history. |
-| POST | `/api/submissions` | Bearer | Validate a Reddit post URL, record consent, and return a temporary Reddit OAuth URL. |
+| POST | `/api/submissions` | Bearer | Validate a Reddit post URL, record consent, and start ownership verification — an OAuth authorize URL when Reddit app credentials are configured, otherwise a one-time edit-code proof. |
+| POST | `/api/submissions/:id/confirm-fallback` | Bearer | (Fallback mode) Re-fetch the post via Reddit's public JSON endpoint and confirm the owner's edit-code is present. |
 | GET | `/api/submissions/reddit/callback` | OAuth state | Compare the Reddit account with the post author, then queue the post privately. |
 | DELETE | `/api/submissions/:id` | Bearer | Withdraw a submission and purge the stored post snapshot. |
 
@@ -50,7 +51,7 @@ cp .env.example .env   # then edit: set JWT_SECRET (generation one-liner inside)
 npm run dev            # http://localhost:3005
 ```
 
-`.env` keys: `PORT`, `JWT_SECRET`, `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_REDIRECT_URI`, and `REDDIT_USER_AGENT`. Create a Reddit **web app** and register the redirect URI exactly. The production redirect must use HTTPS.
+`.env` keys: `PORT`, `JWT_SECRET`, and optionally `REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET`/`REDDIT_REDIRECT_URI` (OAuth ownership verification) plus `REDDIT_USER_AGENT` and `OPENROUTER_API_KEY` (optional LLM structuring during `npm run approve`). Create a Reddit **web app** and register the redirect URI exactly (production must use HTTPS). Without the `REDDIT_*` credentials the app automatically uses the edit-code fallback — no Reddit app registration required.
 
 ## Testing
 
@@ -58,26 +59,26 @@ npm run dev            # http://localhost:3005
 npm test
 ```
 
-Runs the Node unit suite for Reddit URL parsing, OAuth construction, ownership matching, and post sanitization, followed by `e2e_test.cjs`. The browser test registers a throwaway user, checks the submission center's safe unconfigured state, drives all four game phases, and asserts the score lands on the leaderboard. It writes to the real `data/game.db` with unique usernames per run.
+Runs the Node unit suite (Reddit URL parsing, OAuth construction, ownership matching, edit-code fallback verification, post sanitization, design-contrast AA checks) followed by `e2e_test.cjs`. The browser test registers a throwaway user, drives the submission center's edit-code fallback flow (asserts a local proof code is issued with no Reddit network call), plays all four game phases, and asserts the score lands on the leaderboard. It writes to the real `data/game.db` with unique usernames per run.
 
 Acceptance checks: [AGENT_CHECKLIST.md](AGENT_CHECKLIST.md) — the agent-run self-check workflow (boot, API, auth, all four phases, navigation/persistence, console-error watch, screenshots, and the `npm test` gate).
 
 ## Consent-first content pipeline
 
 1. A signed-in user pastes the URL of a Reddit post they authored and accepts the displayed consent language.
-2. The server records the consent version and a hashed, 15-minute OAuth state. It requests only Reddit's `identity` and `read` scopes with `duration=temporary`.
-3. After Reddit redirects back, the server compares `/api/v1/me` with the post's API-reported author. A mismatch imports nothing.
-4. On a match, the server stores a minimized post snapshot in `reddit_submissions` with status `verified_pending_review`. It never stores the Reddit access token or exposes the Reddit username in the game API.
-5. A human editor must anonymize and approve the case before adding it to `data/profiles.jsonl`. There is intentionally no automatic publish path.
+2. **OAuth mode** (Reddit app credentials configured): the server records the consent version and a hashed, 15-minute OAuth state, then redirects to Reddit with only `identity` and `read` scopes (`duration=temporary`). After redirect, it compares `/api/v1/me` with the post's API-reported author — a mismatch imports nothing.
+3. **Fallback mode** (no credentials): the server issues a one-time edit-code (`ORACLE-XXXXXX`, 30-minute TTL). The user edits their post to include it and confirms; the server re-fetches via Reddit's public JSON endpoint and verifies the code. Only the post author can edit a post, so this proves ownership without any Reddit app registration.
+4. On success the server stores a minimized post snapshot in `reddit_submissions` with status `verified_pending_review`. It never stores access tokens or exposes the Reddit username in the game API.
+5. `npm run export-verified` moves verified records into `data/queue.jsonl` as consent drafts; a human editor runs `npm run approve` to publish (with optional LLM structuring if `OPENROUTER_API_KEY` is set). There is intentionally no automatic publish path.
 6. The submitting user can withdraw a pending record; its stored title, body, account identifier, and ownership fingerprint are purged.
 
-Bulk subreddit scraping and arbitrary `--url` imports are disabled. `npm run approve` remains available only for already-consented editorial drafts in the legacy JSONL review queue. See [Consent and Reddit import architecture](docs/CONSENT_IMPORT.md).
+Bulk subreddit scraping and arbitrary `--url` imports are disabled. See [Consent and Reddit import architecture](docs/CONSENT_IMPORT.md).
 
 ## Known limitations / roadmap
 
 - **No build pipeline** — in-browser Babel is fine for an MVP, production wants Vite.
-- **Editorial dashboard** — ownership verification is implemented, but converting a verified post into a playable anonymized profile remains a human workflow.
-- **Reddit app review** — Reddit may require review or approval before public distribution or higher-volume API access.
+- **Editorial dashboard** — ownership verification plus export (`npm run export-verified`) is implemented, but there is still no web UI for the approve step; it is CLI-only (`npm run approve`).
+- **Reddit app review** — Reddit may require review or approval before public distribution or higher-volume API access when the OAuth path is used; the edit-code fallback avoids the official API entirely but is weaker against adversarial proof.
 - **Legacy seed consent** — the eight current seed cases predate the new proof flow. Replace them with consented or synthetic cases before a broad public launch.
 - `public/uploads/` still holds early prototype artifacts (`sample.jsonl`, original scraper prompt) — candidates for pruning.
 
@@ -86,5 +87,5 @@ Bulk subreddit scraping and arbitrary `--url` imports are disabled. `npm run app
 - Deploy `server.js` to any Node host (Railway, Render, DO, EC2).
 - Mount `data/` on a persistent volume so `game.db` survives restarts.
 - Always set `JWT_SECRET` in the host environment.
-- Configure a Reddit web app with the exact production callback URL and a descriptive `REDDIT_USER_AGENT`.
-- Publish a privacy policy and deletion contact before enabling submissions. Reddit's current Developer and Data API Terms can require app review and impose privacy/security obligations.
+- Configure a Reddit web app with the exact production callback URL and a descriptive `REDDIT_USER_AGENT` — or deploy without any `REDDIT_*` vars and rely on the edit-code fallback.
+- Publish a privacy policy and deletion contact before enabling submissions. Reddit's Developer and Data API Terms can require app review and impose privacy/security obligations when the OAuth path is used.

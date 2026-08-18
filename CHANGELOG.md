@@ -2,6 +2,24 @@
 
 All notable changes to this project. Dates are YYYY-MM-DD.
 
+## 2026-08-18 — Consent-first content import (Mason's-Code) + review fixes
+
+### Ownership-verified import (dual mode)
+- **Consent-first submission center** (`public/submission.jsx`, `reddit_submissions` table): a signed-in user pastes the URL of a Reddit post they authored, accepts consent, and proves ownership before any content is stored.
+- **OAuth mode** (Reddit app credentials configured): temporary OAuth flow with `identity`/`read` scopes; server compares the Reddit identity with the post author.
+- **Edit-code fallback mode** (no credentials — Reddit app registration rejected): server issues a one-time `ORACLE-XXXXXX` code; the user edits the post to include it and confirms; the server re-fetches via the public `.json` endpoint and verifies. New endpoint `POST /api/submissions/:id/confirm-fallback`.
+- **Resubmission retry** (bug fix): a post in a terminal/unverified state (expired/cancelled/failed/withdrawn) can be re-submitted by its original owner with a fresh code instead of a permanent 409.
+- **Export pipeline** (integration fix): `npm run export-verified` moves `verified_pending_review` records into `data/queue.jsonl` as consent drafts; `npm run approve` publishes them (LLM structuring when `OPENROUTER_API_KEY` is set, defensively-rendered scaffold otherwise).
+- **Hardening**: OAuth callback wrapped in a full-body try/catch (Express 4 async crash window) with JSON errors; rate-limit map cleanup; idempotent DB migration for fallback columns; privacy fix — `/api/profiles/:id` strips `source` (subreddit/post ID) from players.
+
+### Frontend redesign (v2)
+- Full `styles-v2.css` design rewrite (premium-gold accent, oklch tokens, WCAG AA contrast, focus rings, reduced-motion support); legacy 907-line `<style>` block deleted with load-bearing rules ported.
+- submission.jsx: mode banner, fallback flow UI, perpetual-spinner bugfix; menu cards get `data-card-num` watermark instead of duplicating aria-label.
+
+### Tests & docs
+- 8 new mocked unit tests (fallback fetch, edit-code verification, ownership-mismatch regression, http-scheme rejection); e2e drives the fallback flow and asserts local proof-code issuance with zero Reddit network calls; `test/design-contrast.test.js` asserts the 21 documented contrast pairs.
+- AGENTS.md, README, docs/CONSENT_IMPORT.md, docs/DESIGN_SYSTEM.md, `.env.example` updated for the dual-mode pipeline.
+
 ## 2026-08-17 — Repo-wide revamp & verification pass
 
 ### Backend (`server.js`)
