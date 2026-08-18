@@ -216,7 +216,11 @@ async function main() {
     });
 
     // (ii) Type a canonical Reddit URL and toggle consent → verify enables.
-    await page.type('#reddit-post-url', 'https://www.reddit.com/r/collegeresults/comments/abc123/a_case/');
+    // Post ID must be unique per run: reddit_post_id is globally UNIQUE and
+    // cross-user duplicates are correctly rejected with a 409, so a fixed
+    // fixture ID would fail every run after the first.
+    const fixturePostId = 'e2e' + Math.random().toString(36).slice(2, 8);
+    await page.type('#reddit-post-url', `https://www.reddit.com/r/collegeresults/comments/${fixturePostId}/a_case/`);
     await page.click('.consent-card input');
     await page.waitForFunction(
       () => {
