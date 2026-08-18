@@ -20,7 +20,7 @@ The redesign preserves the tested information architecture and scoring flow whil
 | Decision signal | `#ce3b27` |
 | Body text | `#10243e` |
 | Secondary text | `#3d5873` |
-| Border | `#b7c8d9` |
+| Border | `--border-1 #d2deea` · `--border-2 #7890a8` · `--border-ink #607991` · `--border-light #e6edf4` |
 | Success | `#0a6848` on `#e0f4ea` |
 | Warning | `#765000` on `#fff2cf` |
 | Danger | `#922d25` on `#fde9e7` |
@@ -53,3 +53,8 @@ Spacing follows a 4/8-point scale. Cards use 5–8px radii, one-pixel borders, a
 - the interface respects `prefers-reduced-motion`;
 - essential headings are DOM content, not generated CSS content;
 - responsive checks target 375, 768, 1024, and 1440px widths.
+
+## Manual design manifests
+
+- `test/design-audit.html` — a mechanical layout manifest of the rendered React views, marking each screen region with `data-role`/`data-layout` attributes and measured constraints for manual layout review.
+- `test/design-contrast.json` — the authoritative foreground/background pairs (body and UI roles) with their names; `test/design-contrast.test.js` asserts WCAG ratios from it.

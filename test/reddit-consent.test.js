@@ -4,10 +4,12 @@ import assert from "node:assert/strict";
 import {
   buildRedditAuthorizeUrl,
   exchangeRedditAuthorizationCode,
+  fetchFallbackPost,
   fetchVerifiedRedditPost,
   hashOAuthState,
   normalizeRedditPostUrl,
   sanitizeRedditPost,
+  verifyFallbackEditCode,
 } from "../lib/reddit-consent.js";
 
 test("normalizes supported Reddit post URLs without retaining tracking parameters", () => {
@@ -125,4 +127,121 @@ test("sanitizes the stored post snapshot and excludes the Reddit username", () =
     createdUtc: 123,
     permalink: "/r/collegeresults/comments/abc123/my_results/",
   });
+});
+
+test("fetchFallbackPost maps a two-element listing to the expected post and targets the public comments JSON endpoint", async () => {
+  let seen;
+  const fetchImpl = async (url, options) => {
+    seen = { url, options };
+    return new Response(JSON.stringify([
+      { data: { children: [{ data: {
+        id: "abc123",
+        title: "My results",
+        selftext: "Proof ORACLE-AB12CD",
+        author: "postowner",
+        subreddit: "collegeresults",
+        created_utc: 123,
+        permalink: "/r/collegeresults/comments/abc123/my_results/",
+      } }] } },
+      { data: { children: [] } },
+    ]), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  const result = await fetchFallbackPost("abc123", {
+    userAgent: "AdmissionsOracle/1.0 by MJanW",
+    fetchImpl,
+  });
+
+  assert.equal(seen.url, "https://www.reddit.com/comments/abc123.json");
+  assert.equal(seen.options.headers["User-Agent"], "AdmissionsOracle/1.0 by MJanW");
+  assert.equal(seen.options.headers.Accept, "application/json");
+  assert.deepEqual(result, {
+    post: {
+      id: "abc123",
+      title: "My results",
+      selftext: "Proof ORACLE-AB12CD",
+      author: "postowner",
+      subreddit: "collegeresults",
+      permalink: "https://www.reddit.com/r/collegeresults/comments/abc123/my_results/",
+      createdUtc: 123,
+    },
+  });
+});
+
+test("fetchFallbackPost throws 'Reddit could not find that post' when the listing has no children", async () => {
+  const fetchImpl = async () => new Response(JSON.stringify([
+    { data: { children: [] } },
+    { data: { children: [] } },
+  ]), { status: 200, headers: { "content-type": "application/json" } });
+
+  await assert.rejects(
+    fetchFallbackPost("abc123", { userAgent: "AdmissionsOracle/1.0 by MJanW", fetchImpl }),
+    /Reddit could not find that post/,
+  );
+});
+
+test("fetchFallbackPost throws on a non-ok response including the HTTP status", async () => {
+  const fetchImpl = async () => new Response("Not found", { status: 404, headers: { "content-type": "text/plain" } });
+
+  await assert.rejects(
+    fetchFallbackPost("abc123", { userAgent: "AdmissionsOracle/1.0 by MJanW", fetchImpl }),
+    /404/,
+  );
+});
+
+test("verifyFallbackEditCode returns true on a match and false when absent or undefined", () => {
+  assert.equal(verifyFallbackEditCode({ selftext: "Proof ORACLE-AB12CD here" }, "ORACLE-AB12CD"), true);
+  assert.equal(verifyFallbackEditCode({ selftext: "No code in this body" }, "ORACLE-AB12CD"), false);
+  assert.equal(verifyFallbackEditCode({}, "ORACLE-AB12CD"), false);
+  assert.equal(verifyFallbackEditCode(undefined, "ORACLE-AB12CD"), false);
+});
+
+test("fetchVerifiedRedditPost reports isOwner false when the post author differs from the identity name", async () => {
+  const responses = new Map([
+    ["https://oauth.reddit.com/api/v1/me", { name: "PostOwner", id: "t2_owner" }],
+    ["https://oauth.reddit.com/api/info?id=t3_abc123", {
+      data: { children: [{ data: { id: "abc123", author: "someoneElse", subreddit: "collegeresults", title: "My results", selftext: "Body", created_utc: 123, permalink: "/r/collegeresults/comments/abc123/my_results/" } }] },
+    }],
+  ]);
+  const fetchImpl = async (url) => new Response(JSON.stringify(responses.get(url)), {
+    status: responses.has(url) ? 200 : 404,
+    headers: { "content-type": "application/json" },
+  });
+
+  const result = await fetchVerifiedRedditPost({
+    accessToken: "temporary-token",
+    postId: "abc123",
+    userAgent: "AdmissionsOracle/1.0 by MJanW",
+    fetchImpl,
+  });
+
+  assert.equal(result.isOwner, false);
+});
+
+test("fetchVerifiedRedditPost throws 'Reddit could not find that post' when api/info returns no children", async () => {
+  const responses = new Map([
+    ["https://oauth.reddit.com/api/v1/me", { name: "PostOwner", id: "t2_owner" }],
+    ["https://oauth.reddit.com/api/info?id=t3_abc123", { data: { children: [] } }],
+  ]);
+  const fetchImpl = async (url) => new Response(JSON.stringify(responses.get(url)), {
+    status: responses.has(url) ? 200 : 404,
+    headers: { "content-type": "application/json" },
+  });
+
+  await assert.rejects(
+    fetchVerifiedRedditPost({
+      accessToken: "temporary-token",
+      postId: "abc123",
+      userAgent: "AdmissionsOracle/1.0 by MJanW",
+      fetchImpl,
+    }),
+    /Reddit could not find that post/,
+  );
+});
+
+test("normalizeRedditPostUrl rejects an http:// scheme with a clear Reddit post URL error", () => {
+  assert.throws(
+    () => normalizeRedditPostUrl("http://www.reddit.com/r/collegeresults/comments/abc123/a_title"),
+    /Reddit post URL/i,
+  );
 });

@@ -5,6 +5,7 @@ const SUBMISSION_API_BASE = window.API_BASE || "";
 
 const SUBMISSION_STATUS = {
   awaiting_reddit_verification: { label: "Awaiting Reddit verification", kind: "warn", icon: "brand-reddit" },
+  awaiting_fallback_code: { label: "Waiting for you to add the code to your post", kind: "warn", icon: "brand-reddit" },
   verified_pending_review: { label: "Verified · pending review", kind: "ok", icon: "shield-check" },
   verification_expired: { label: "Verification expired", kind: "neutral", icon: "clock-off" },
   verification_cancelled: { label: "Verification cancelled", kind: "neutral", icon: "circle-x" },
@@ -33,9 +34,13 @@ function SubmissionScreen({ token, onBack }) {
   const [consentAccepted, setConsentAccepted] = React.useState(false);
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [fallbackFlow, setFallbackFlow] = React.useState(null);
+  const [confirmNotice, setConfirmNotice] = React.useState(null);
+  const [confirmBusy, setConfirmBusy] = React.useState(false);
   const [notice, setNotice] = React.useState(() => new URLSearchParams(window.location.search).get("submission_status") || "");
 
   const headers = { Authorization: `Bearer ${token}` };
+  const mode = config ? (config.redditOAuthConfigured ? "oauth" : "fallback") : null;
 
   async function load() {
     try {
@@ -61,9 +66,11 @@ function SubmissionScreen({ token, onBack }) {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (!config?.redditOAuthConfigured) return;
+    if (!config) return;
     setError("");
     setNotice("");
+    setConfirmNotice(null);
+    setFallbackFlow(null);
     setBusy(true);
     try {
       const response = await fetch(`${SUBMISSION_API_BASE}/api/submissions`, {
@@ -77,11 +84,64 @@ function SubmissionScreen({ token, onBack }) {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not start verification");
-      window.location.assign(data.authorizeUrl);
+      if (config.redditOAuthConfigured) {
+        window.location.assign(data.authorizeUrl);
+      } else {
+        setFallbackFlow({
+          submission: data.submission,
+          proofCode: data.proofCode,
+          fallbackInstructions: data.fallbackInstructions,
+        });
+        setBusy(false);
+      }
     } catch (err) {
       setError(err.message || "Could not start verification");
       setBusy(false);
     }
+  }
+
+  async function handleConfirmFallback() {
+    const flow = fallbackFlow;
+    if (!flow) return;
+    setConfirmBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`${SUBMISSION_API_BASE}/api/submissions/${flow.submission.id}/confirm-fallback`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        if (response.status === 410) {
+          setConfirmNotice({ kind: "expired", text: data.error || "Verification expired. Re-submit to get a fresh code." });
+          setFallbackFlow(null);
+          setRedditUrl("");
+          setConsentAccepted(false);
+          load();
+        } else {
+          throw new Error(data.error || "Could not confirm the code.");
+        }
+      } else if (data.status === "verified_pending_review") {
+        setConfirmNotice({ kind: "ok", text: data.message || "Case queued for review" });
+        setFallbackFlow(null);
+        setRedditUrl("");
+        setConsentAccepted(false);
+        load();
+      } else {
+        setConfirmNotice({ kind: "warn", text: data.message || "Code not found in your post yet — add it and try again" });
+      }
+    } catch (err) {
+      setError(err.message || "Could not confirm the code.");
+    } finally {
+      setConfirmBusy(false);
+    }
+  }
+
+  function cancelFallbackFlow() {
+    setFallbackFlow(null);
+    setConfirmNotice(null);
+    setRedditUrl("");
+    setConsentAccepted(false);
   }
 
   async function withdraw(submission) {
@@ -145,67 +205,112 @@ function SubmissionScreen({ token, onBack }) {
           <span>{error}</span>
         </div>
       )}
+      {confirmNotice && (
+        <div className={`callout submission-notice ${confirmNotice.kind === "ok" ? "callout--success" : "callout--warning"}`} role="status">
+          <i className={`ti ${confirmNotice.kind === "ok" ? "ti-shield-check" : "ti-info-circle"}`} aria-hidden="true" />
+          <span>{confirmNotice.text}</span>
+        </div>
+      )}
 
       <div className="submission-layout">
-        <form className="submission-form card" onSubmit={handleSubmit}>
-          <div className="section-head section-head--compact">
-            <div className="title-block">
-              <span className="eyebrow">New case</span>
-              <h2>Submit your post</h2>
+        {fallbackFlow ? (
+          <div className="submission-form card">
+            <div className="section-head section-head--compact">
+              <div className="title-block">
+                <span className="eyebrow">Step 2 of 2</span>
+                <h2>Add the code to your post</h2>
+              </div>
             </div>
-          </div>
 
-          <label className="field-label" htmlFor="reddit-post-url">Reddit post URL</label>
-          <div className="url-field">
-            <i className="ti ti-brand-reddit" aria-hidden="true" />
-            <input
-              id="reddit-post-url"
-              type="url"
-              inputMode="url"
-              placeholder="https://www.reddit.com/r/collegeresults/comments/..."
-              value={redditUrl}
-              onChange={event => setRedditUrl(event.target.value)}
-              required
-              autoComplete="url"
-            />
-          </div>
+            <p className="muted" style={{ marginTop: 0 }}>Edit your post and add the code below to its body.</p>
+            <p>{fallbackFlow.fallbackInstructions}</p>
 
-          <label className="consent-card">
-            <input
-              type="checkbox"
-              checked={consentAccepted}
-              onChange={event => setConsentAccepted(event.target.checked)}
-            />
-            <span className="consent-card__box" aria-hidden="true"><i className="ti ti-check" /></span>
-            <span>
-              <strong>I authored this post and consent to its use.</strong>
-              <small>
-                I allow Admissions Oracle to fetch this post through Reddit, create an anonymized game draft,
-                and hold it for human review. The temporary Reddit token is not stored. I can withdraw before publication.
-              </small>
-            </span>
-          </label>
-
-          {config && !config.redditOAuthConfigured && (
-            <div className="callout callout--warning">
-              <i className="ti ti-tool" aria-hidden="true" />
-              <span>Owner verification needs Reddit API credentials before this can accept submissions.</span>
+            <div style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border-2)", borderRadius: "var(--r-md)", padding: "14px 16px", marginBottom: "var(--sp-4)", display: "flex", alignItems: "center", gap: "10px" }}>
+              <i className="ti ti-key" aria-hidden="true" style={{ color: "var(--accent)" }} />
+              <code data-proof-code style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-lg)", color: "var(--accent)", letterSpacing: "0.04em" }}>{fallbackFlow.proofCode}</code>
             </div>
-          )}
 
-          <button
-            className="btn-primary"
-            type="submit"
-            disabled={busy || !redditUrl.trim() || !consentAccepted || !config?.redditOAuthConfigured}
-          >
-            {busy ? "Opening Reddit…" : "Verify ownership with Reddit"}
-            <i className="ti ti-arrow-up-right" aria-hidden="true" />
-          </button>
+            <button
+              className="btn-primary"
+              type="button"
+              onClick={handleConfirmFallback}
+              disabled={confirmBusy}
+            >
+              {confirmBusy ? "Checking your post…" : "I added the code to my post"}
+              <i className="ti ti-arrow-up-right" aria-hidden="true" />
+            </button>
 
-          <p className="form-footnote">
-            Requested Reddit scopes: <code>identity</code> and <code>read</code>. Access is temporary and used once.
-          </p>
-        </form>
+            <button className="btn-ghost submission-back" type="button" onClick={cancelFallbackFlow} style={{ marginTop: "var(--sp-3)", width: "100%" }}>
+              <i className="ti ti-arrow-left" aria-hidden="true" /> Use a different link
+            </button>
+          </div>
+        ) : (
+          <form className="submission-form card" onSubmit={handleSubmit}>
+            <div className="section-head section-head--compact">
+              <div className="title-block">
+                <span className="eyebrow">New case</span>
+                <h2>Submit your post</h2>
+              </div>
+            </div>
+
+            <label className="field-label" htmlFor="reddit-post-url">Reddit post URL</label>
+            <div className="url-field">
+              <i className="ti ti-brand-reddit" aria-hidden="true" />
+              <input
+                id="reddit-post-url"
+                type="url"
+                inputMode="url"
+                placeholder="https://www.reddit.com/r/collegeresults/comments/..."
+                value={redditUrl}
+                onChange={event => setRedditUrl(event.target.value)}
+                required
+                autoComplete="url"
+              />
+            </div>
+
+            <label className="consent-card">
+              <input
+                type="checkbox"
+                checked={consentAccepted}
+                onChange={event => setConsentAccepted(event.target.checked)}
+              />
+              <span className="consent-card__box" aria-hidden="true"><i className="ti ti-check" /></span>
+              <span>
+                <strong>I authored this post and consent to its use.</strong>
+                <small>
+                  I allow Admissions Oracle to fetch this post through Reddit, create an anonymized game draft,
+                  and hold it for human review. The temporary Reddit token is not stored. I can withdraw before publication.
+                </small>
+              </span>
+            </label>
+
+            {config && (
+              <div className="callout" data-mode-banner={mode}>
+                <i className={`ti ${mode === "fallback" ? "ti-tool" : "ti-user-scan"}`} aria-hidden="true" />
+                <span>{mode === "fallback"
+                  ? "No Reddit app credentials configured — verifying via a one-time edit-code you add to your post."
+                  : "Verifies ownership by signing in with the Reddit account that authored the post."}</span>
+              </div>
+            )}
+
+            <button
+              className="btn-primary"
+              type="submit"
+              disabled={busy || !config || !redditUrl.trim() || !consentAccepted}
+            >
+              {busy
+                ? (mode === "oauth" ? "Opening Reddit…" : "Starting…")
+                : (mode === "oauth" ? "Verify ownership with Reddit" : "Verify ownership with edit code")}
+              <i className="ti ti-arrow-up-right" aria-hidden="true" />
+            </button>
+
+            {mode === "oauth" && (
+              <p className="form-footnote">
+                Requested Reddit scopes: <code>identity</code> and <code>read</code>. Access is temporary and used once.
+              </p>
+            )}
+          </form>
+        )}
 
         <aside className="trust-panel">
           <span className="eyebrow">Built for consent</span>
@@ -228,7 +333,7 @@ function SubmissionScreen({ token, onBack }) {
           <span className="sub">Only you can see these records.</span>
         </div>
 
-        {!submissions && <CalmLoading label="Loading submissions…" minHeight="18vh" />}
+        {!submissions && !error && <CalmLoading label="Loading submissions…" minHeight="18vh" />}
         {submissions && submissions.length === 0 && (
           <div className="empty-dossier">
             <i className="ti ti-file-plus" aria-hidden="true" />

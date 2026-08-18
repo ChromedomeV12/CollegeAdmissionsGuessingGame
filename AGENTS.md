@@ -10,17 +10,21 @@
 
 ## Development Commands
 - **Run Server**: `npm run dev` (Express via `node --watch`).
-- **Run Tests**: `npm test` → `node e2e_test.cjs`. A self-contained Puppeteer harness: picks a free port, spawns `server.js` itself, registers a unique user, drives all 4 game phases headless, and asserts the run lands on the leaderboard. **No manual setup** — just run it. `.cjs` because `package.json` is `"type": "module"`.
+- **Run Tests**: `npm test` runs `npm run test:unit` (`node --test test/*.test.js`) then `npm run test:e2e` (`node e2e_test.cjs`, the Puppeteer harness). `.cjs` because `package.json` is `"type": "module"`. **No manual setup** — the e2e harness picks a free port and spawns `server.js` itself.
+- **Export verified drafts**: `npm run export-verified` (see pipeline below — connects verified consent submissions to the game draft queue).
 - **Approve**: `npm run approve` (see pipeline below).
 
-## Consent-first Reddit pipeline
-*IMPORTANT: bulk subreddit scraping and arbitrary URL scraping are disabled.*
-1. **Environment**: Reddit web-app OAuth uses `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_REDIRECT_URI`, and `REDDIT_USER_AGENT` from `.env`.
-2. **User proof**: a signed-in user submits one post URL, accepts versioned consent, and completes temporary Reddit OAuth with `identity read` scopes.
-3. **Ownership check**: `server.js` compares `/api/v1/me` with the target post author. Only a match stores a minimized private post snapshot with `verified_pending_review` status. Reddit tokens are never stored.
-4. **No auto-publish**: verified submissions require separate human anonymization and editorial approval before any entry is added to `data/profiles.jsonl`.
-5. **Withdrawal**: `DELETE /api/submissions/:id` purges pending post content and ownership proof fields.
-6. **Legacy review CLI**: `npm run approve` remains only for already-consented drafts in `data/queue.jsonl`.
+## Consent-import pipeline
+*IMPORTANT: bulk subreddit scraping and arbitrary URL scraping are disabled. New cases enter only through consent + ownership proof.*
+1. **Submit**: a signed-in user submits one Reddit post URL and accepts versioned consent (`POST /api/submissions`, auth + rate-limited).
+2. **Verify ownership** — one of two paths, auto-selected by config:
+   - **OAuth** (when `REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET`/`REDDIT_REDIRECT_URI` are set): user completes a temporary `identity read` Reddit grant; `server.js` compares `/api/v1/me` with the post author. Reddit tokens are never stored.
+   - **Edit-code fallback** (otherwise): the server issues a local `ORACLE-[A-Z0-9]{6}` receipt code (no Reddit network call) and sets `awaiting_fallback_code`. The user edits the code into their Reddit post, then `POST /api/submissions/:id/confirm-fallback` fetches the post and checks the body for the code. A miss is retryable in place (`failure_reason='edit_code_not_found'`); expiry → `verification_expired`.
+   Either path lands verified submissions in `verified_pending_review`. `GET /api/submissions/config` reports `redditOAuthConfigured` and `fallbackEnabled: true`.
+3. **Export verified drafts**: `npm run export-verified` reads `verified_pending_review` rows from `data/game.db`, appends each to `data/queue.jsonl` as a `{ draft: true, draftKind: 'reddit-consent', consent, source }` entry, and flips the row to `exported_pending_approval`. Supports `--dry-run`, `--all` (include already-exported rows), and `--db <path>` (test on a temp copy). This is the only writer that connects verified consent submissions to the game.
+4. **Approve**: `npm run approve` reviews `data/queue.jsonl`. When `OPENROUTER_API_KEY` is set, each draft is structured into a full `GameRecord` via the LLM (using the draft's consent post body as the source text); without the key, approved drafts are written as defensive `GameRecord` scaffolds with empty fields that render as empty states. Approved records land in `data/profiles.jsonl`. `OPENROUTER_API_KEY` is optional — it only affects LLM structuring during approve, not verification or export.
+5. **No auto-publish**: a verified submission never reaches `data/profiles.jsonl` without a human running export + approve.
+6. **Withdrawal**: `DELETE /api/submissions/:id` purges pending post content and ownership proof fields.
 
 ## Code Conventions & Gotchas
 - **Defensive UI Rendering**: When modifying `public/phase*.jsx` components, **ALWAYS use optional chaining (`?.`)** and fallback defaults (`|| {}`, `|| []`) when accessing profile data (e.g., `test_scores`, `academic_profile`, `extracurriculars`). The LLM scraper is imperfect; missing data must render empty states, not crash the React tree. Hardening is already applied to `phase1-profile.jsx`, `phase2-tier.jsx`, `phase4-results.jsx`.

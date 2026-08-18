@@ -185,7 +185,11 @@ async function main() {
     ]);
     log("PASS registered + reached Phase0 menu");
 
-    // ── Step 1b: Consent-first submission center ──────────────────────────
+    // ── Step 1b: Edit-code fallback submission flow ───────────────────────
+    // Server is spawned with REDDIT_* envs forced empty, so the submission
+    // center runs in fallback mode: a local ORACLE-XXXXXX proof code is issued
+    // with no Reddit network call. We drive the issue flow but stop before
+    // confirm (which would hit real Reddit).
     await page.evaluate(() => {
       const button = [...document.querySelectorAll("button")].find((item) => item.textContent.includes("Submit a post"));
       if (!button) throw new Error("Submit a post navigation button not found");
@@ -193,16 +197,50 @@ async function main() {
     });
     await page.waitForSelector('[data-screen-label="Submission Center"]', { timeout: POLL_TIMEOUT_MS });
     await page.waitForSelector('#reddit-post-url', { timeout: SHORT_TIMEOUT_MS });
+    // (i) Fallback banner is visible and mentions the edit-code path.
     await page.waitForFunction(
-      () => document.querySelector('[data-screen-label="Submission Center"]')?.textContent.includes("Owner verification needs Reddit API credentials"),
+      () => {
+        const el = document.querySelector('[data-screen-label="Submission Center"]');
+        return el && /edit-code/i.test(el.textContent);
+      },
       { timeout: SHORT_TIMEOUT_MS }
     );
-    const verifyDisabled = await page.$eval(
-      '[data-screen-label="Submission Center"] button[type="submit"]',
-      (button) => button.disabled
+    log("PASS fallback banner visible (edit-code)");
+
+    // Track any outbound Reddit requests so we can prove the proof code is
+    // generated locally, not via a Reddit round-trip.
+    const redditRequests = [];
+    page.on("request", (req) => {
+      const u = req.url();
+      if (/(?:^|\.)reddit\.com|redd\.it/i.test(u)) redditRequests.push(u);
+    });
+
+    // (ii) Type a canonical Reddit URL and toggle consent → verify enables.
+    await page.type('#reddit-post-url', 'https://www.reddit.com/r/collegeresults/comments/abc123/a_case/');
+    await page.click('.consent-card input');
+    await page.waitForFunction(
+      () => {
+        const btn = document.querySelector('[data-screen-label="Submission Center"] button[type="submit"]');
+        return btn && !btn.disabled;
+      },
+      { timeout: SHORT_TIMEOUT_MS }
     );
-    if (!verifyDisabled) throw new Error("Reddit verification submit button should be disabled without OAuth configuration");
-    log("PASS consent-first submission center renders safe disabled state");
+    log("PASS verify button enabled after URL + consent");
+
+    // (iii) Click verify → local proof code rendered, no Reddit network call.
+    await Promise.all([
+      page.waitForSelector('[data-proof-code]', { timeout: POLL_TIMEOUT_MS }),
+      page.click('[data-screen-label="Submission Center"] button[type="submit"]'),
+    ]);
+    const proofCode = await page.$eval('[data-proof-code]', (el) => (el.textContent || "").trim());
+    if (!/^ORACLE-[A-Z0-9]{6}$/.test(proofCode))
+      throw new Error(`Expected local proof code matching /^ORACLE-[A-Z0-9]{6}$/, got "${proofCode}"`);
+    if (redditRequests.length > 0)
+      throw new Error(`Fallback issue made Reddit network calls (no key configured): ${redditRequests.join(", ")}`);
+    log("PASS local proof code issued:", proofCode, "(no Reddit network call)");
+
+    // (iv) Do NOT click confirm — that would fetch the real Reddit post.
+    log("PASS stopped before confirm (would hit real Reddit)");
 
     await page.evaluate(() => {
       const button = [...document.querySelectorAll("button")].find((item) => item.textContent.trim() === "Game");

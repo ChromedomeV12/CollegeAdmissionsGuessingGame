@@ -226,12 +226,6 @@ textarea::placeholder { color: var(--text-tertiary); }
   padding: 22px 24px;
 }
 
-.card--ink {
-  background: var(--bg-ink);
-  border-color: var(--bg-ink);
-  color: #ffffff;
-}
-
 .label,
 .eyebrow {
   color: var(--text-tertiary);
@@ -367,6 +361,7 @@ textarea::placeholder { color: var(--text-tertiary); }
 .muted { color: var(--text-tertiary); }
 .accent-text { color: var(--accent); }
 .divider { border: 0; border-top: 1px solid var(--border-2); margin: 28px 0; }
+hr.sep { border: 0; border-top: 1px solid var(--border-1); margin: 18px 0; }
 .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 .stepper {
@@ -475,7 +470,7 @@ textarea::placeholder { color: var(--text-tertiary); }
 
 [data-screen-label="00 Menu"] .school-card::after {
   color: #d9e4ef;
-  content: attr(aria-label);
+  content: attr(data-card-num);
   font-family: var(--font-mono);
   font-size: 9px;
   inset: auto 14px 10px auto;
@@ -539,12 +534,17 @@ textarea::placeholder { color: var(--text-tertiary); }
   padding: 14px 16px;
 }
 .profile-collapsed-summary .who { font-family: var(--font-serif); font-size: 18px; font-weight: 700; }
-
 .tier-pick {
+  align-items: flex-start;
+  appearance: none;
   background: #ffffff;
   border: 1px solid var(--border-2);
   border-radius: var(--r-md);
   color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  font-family: inherit;
+  gap: 4px;
   min-height: 96px;
   padding: 14px 8px;
   position: relative;
@@ -590,7 +590,12 @@ textarea::placeholder { color: var(--text-tertiary); }
 .result-row .delta.plus { color: var(--accent-ok-fg); }
 .result-row .delta.minus { color: var(--accent-danger-fg); }
 
-.score-pop { font-family: var(--font-serif); font-size: var(--fs-score); font-weight: 700; letter-spacing: -.07em; line-height: .9; }
+.score-pop { animation: scorePop 460ms var(--ease) both; font-family: var(--font-serif); font-size: var(--fs-score); font-weight: 700; letter-spacing: -.07em; line-height: .9; }
+
+@keyframes scorePop {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: none; }
+}
 
 .final-banner {
   background: var(--accent);
@@ -613,9 +618,13 @@ textarea::placeholder { color: var(--text-tertiary); }
 .final-banner .date { color: #e5ebff; margin-top: 8px; }
 .stamp-mark { background: var(--stamp); border: 2px solid #ffffff; border-radius: 3px; color: #ffffff; display: inline-block; font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: .12em; margin-bottom: 16px; padding: 7px 10px; text-transform: uppercase; transform: rotate(-3deg); }
 
-.collapsible summary { align-items: center; color: var(--text-secondary); display: flex; gap: 8px; list-style: none; min-height: 42px; }
+.collapsible summary { align-items: center; color: var(--text-secondary); display: flex; gap: 8px; list-style: none; min-height: 42px; transition: color var(--dur) var(--ease); user-select: none; }
 .collapsible summary::-webkit-details-marker { display: none; }
-.collapsible .body { padding: 8px 0 16px; }
+.collapsible summary:hover { color: var(--text-primary); }
+.collapsible[open] summary { color: var(--text-primary); }
+.collapsible summary .chev { transition: transform 200ms var(--ease); }
+.collapsible[open] summary .chev { transform: rotate(180deg); }
+.collapsible .body { color: var(--text-secondary); font-size: var(--fs-base); padding: 8px 0 16px; }
 
 /* Submission center */
 .submission-page { margin: 0 auto; max-width: 1100px; }

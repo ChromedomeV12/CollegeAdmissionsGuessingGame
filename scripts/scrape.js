@@ -233,7 +233,7 @@ async function runScrape(url = null) {
       for (const post of posts) {
         if (seen.has(post.id)) { process.stdout.write("."); continue; }
         if (!post.selftext || post.selftext.length < 150 || post.selftext === "[removed]") {
-          seen.add(post.id); continue;
+        seen.add(post.id); continue;
         }
 
         process.stdout.write(`\n  "${post.title.slice(0, 55)}"... `);
@@ -272,14 +272,91 @@ async function runScrape(url = null) {
 
 async function runApprove() {
   const queued = loadLines(QUEUE_FILE);
-  if (!queued.length) { console.log("Queue is empty. Run 'npm run scrape' first."); return; }
+  if (!queued.length) { console.log("Queue is empty. Run \"npm run export-verified\" first (or queue drafts by hand)."); return; }
 
   const approved = loadLines(PROFILES_FILE);
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const ask = (q) => new Promise(res => rl.question(q, res));
   const remaining = [];
+  const hasAIKey = !!process.env.OPENROUTER_API_KEY;
 
   for (const profile of queued) {
+    const isDraft = profile.draft === true && profile.draftKind === "reddit-consent";
+
+    if (isDraft) {
+      // Consent-imported draft: the post body is the only source material.
+      const consent = profile.consent || {};
+      const postFromDraft = {
+        title: consent.postTitle,
+        selftext: consent.postBody,
+        subreddit: consent.subreddit,
+        permalink: consent.postPermalink,
+        id: consent.submissionId,
+        created_utc: Date.parse(consent.verifiedAt) / 1000,
+      };
+      const bodyExcerpt = (consent.postBody || "").slice(0, 300);
+      const bodyEllipsis = consent.postBody && consent.postBody.length > 300 ? "…" : "";
+
+      console.log("\n" + "─".repeat(65));
+      console.log(`[draft · reddit-consent]`);
+      console.log(`Source:     r/${consent.subreddit}`);
+      console.log(`Title:      ${consent.postTitle}`);
+      console.log(`Permalink:  ${consent.postPermalink}`);
+      console.log(`Body:       ${bodyExcerpt}${bodyEllipsis}`);
+      console.log(`Consent:    receipt ${consent.submissionId} · verified ${consent.verifiedAt}`);
+
+      const ans = await ask("\n[a]pprove  [r]eject  [q]uit: ");
+
+      if (ans === "q") { remaining.push(...queued.slice(queued.indexOf(profile))); break; }
+      if (ans === "r") { console.log("  Rejected."); continue; }
+      if (ans === "a") {
+        if (hasAIKey) {
+          // Structure the raw post into a full GameRecord via the LLM.
+          try {
+            const extracted = await callAI(buildPrompt(postFromDraft));
+            if (extracted.skip || extracted.is_rich_enough === false) {
+              console.log(`  Rejected (not rich enough: ${extracted.rejection_reason || extracted.reason || "sparse"})`);
+              continue;
+            }
+            const record = extracted.game_record || extracted;
+            record.id = nextId(approved);
+            approved.push(record);
+            console.log(`  ✓ Approved as ${record.id} (AI-structured)`);
+          } catch (err) {
+            console.log(`  ERROR structuring: ${err.message} — draft kept in queue`);
+            remaining.push(profile);
+          }
+        } else {
+          // No LLM key: write a defensively-rendered GameRecord scaffold whose
+          // empty fields render as empty states (safe), not crashes.
+          const verifiedDate = (consent.verifiedAt || "").slice(0, 10);
+          const scaffold = {
+            id: nextId(approved),
+            source: {
+              subreddit: consent.subreddit,
+              post_date: verifiedDate,
+              scrape_date: verifiedDate,
+              consent_submission: consent.submissionId,
+            },
+            test_scores: {},
+            academic_profile: {},
+            application_results: {},
+            demographics: {},
+            extracurriculars: [],
+            awards_honors: [],
+            qualitative_notes: { raw_post: consent.postBody },
+            game_metadata: {},
+          };
+          approved.push(scaffold);
+          console.log(`  ✓ Approved as ${scaffold.id} (raw scaffold — empty fields render as empty states)`);
+        }
+      } else {
+        remaining.push(profile);
+      }
+      continue;
+    }
+
+    // ── Pre-structured (legacy) profile ──────────────────────────────────────
     console.log("\n" + "─".repeat(65));
     console.log(`Source:     r/${profile.source?.subreddit} | ${profile.source?.post_date}`);
     console.log(`Demo:       ${profile.demographics?.gender}, ${profile.demographics?.ethnicity}, ${profile.demographics?.school_type}`);

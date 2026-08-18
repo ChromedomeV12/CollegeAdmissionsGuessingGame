@@ -10,10 +10,12 @@ import "dotenv/config";
 import {
   buildRedditAuthorizeUrl,
   exchangeRedditAuthorizationCode,
+  fetchFallbackPost,
   fetchVerifiedRedditPost,
   hashOAuthState,
   normalizeRedditPostUrl,
   sanitizeRedditPost,
+  verifyFallbackEditCode,
 } from "./lib/reddit-consent.js";
 
 const app = express();
@@ -25,6 +27,8 @@ const REDDIT_REDIRECT_URI = process.env.REDDIT_REDIRECT_URI || "";
 const REDDIT_USER_AGENT = process.env.REDDIT_USER_AGENT || "web:AdmissionsOracle:1.0 (by /u/MJanW)";
 const CONSENT_VERSION = "2026-08-17";
 const OAUTH_STATE_TTL_MS = 15 * 60 * 1000;
+const FALLBACK_CODE_TTL_MS = 30 * 60 * 1000;
+const FALLBACK_VERIFICATION_ENABLED = true;
 const redditOAuthConfigured = Boolean(REDDIT_CLIENT_ID && REDDIT_CLIENT_SECRET && REDDIT_REDIRECT_URI);
 if (!process.env.JWT_SECRET) {
   console.warn("⚠️  JWT_SECRET not set — using insecure dev fallback. Set JWT_SECRET in production.");
@@ -94,6 +98,17 @@ db.exec(`
     ON reddit_submissions (status, created_at ASC);
 `);
 
+// ─── Schema Migration: fallback code columns ─────────────────────────────────
+{
+  const cols = db.prepare("PRAGMA table_info(reddit_submissions)").all().map(c => c.name);
+  if (!cols.includes("fallback_code")) {
+    db.exec("ALTER TABLE reddit_submissions ADD COLUMN fallback_code TEXT");
+  }
+  if (!cols.includes("fallback_code_expires_at")) {
+    db.exec("ALTER TABLE reddit_submissions ADD COLUMN fallback_code_expires_at TEXT");
+  }
+}
+
 // ─── Load Profiles ────────────────────────────────────────────────────────────
 const profilesPath = path.join(dataDir, "profiles.jsonl");
 
@@ -131,7 +146,7 @@ function authenticateToken(req, res, next) {
 }
 
 function submissionForClient(row) {
-  return {
+  const client = {
     id: row.id,
     redditUrl: row.reddit_url,
     status: row.status,
@@ -144,6 +159,11 @@ function submissionForClient(row) {
     createdAt: row.created_at,
     canWithdraw: !["withdrawn", "rejected"].includes(row.status),
   };
+  if (row.status === "awaiting_fallback_code") {
+    client.fallbackCode = row.fallback_code;
+    client.fallbackCodeExpiresAt = row.fallback_code_expires_at;
+  }
+  return client;
 }
 
 function submissionRedirect(res, submissionId, status) {
@@ -158,6 +178,16 @@ function ownershipFingerprint(redditUsername) {
     .digest("hex");
 }
 
+const FALLBACK_INSTRUCTIONS = `Edit your Reddit post and add the proof code below on a new line, then confirm here. The code proves you own the post. It expires in 30 minutes.`;
+
+function generateProofCode() {
+  let body = "";
+  while (body.length < 6) {
+    body += crypto.randomBytes(6).toString("base64url").replace(/[^A-Z0-9]/g, "");
+  }
+  return `ORACLE-${body.slice(0, 6)}`;
+}
+
 const submissionRateWindows = new Map();
 function submissionRateLimit(req, res, next) {
   const now = Date.now();
@@ -167,7 +197,11 @@ function submissionRateLimit(req, res, next) {
     return res.status(429).json({ error: "Too many submission attempts. Try again later." });
   }
   attempts.push(now);
-  submissionRateWindows.set(req.user.id, attempts);
+  if (attempts.length === 0) {
+    submissionRateWindows.delete(req.user.id);
+  } else {
+    submissionRateWindows.set(req.user.id, attempts);
+  }
   next();
 }
 
@@ -250,6 +284,7 @@ app.get("/api/me", authenticateToken, (req, res) => {
 app.get("/api/submissions/config", authenticateToken, (req, res) => {
   res.json({
     redditOAuthConfigured,
+    fallbackEnabled: true,
     consentVersion: CONSENT_VERSION,
     maxSubmissionsPerHour: 5,
   });
@@ -271,7 +306,7 @@ app.get("/api/submissions", authenticateToken, (req, res) => {
 });
 
 app.post("/api/submissions", authenticateToken, submissionRateLimit, (req, res) => {
-  if (!redditOAuthConfigured) {
+  if (!redditOAuthConfigured && !FALLBACK_VERIFICATION_ENABLED) {
     return res.status(503).json({ error: "Reddit ownership verification is not configured yet" });
   }
   if (req.body?.consentAccepted !== true || req.body?.consentVersion !== CONSENT_VERSION) {
@@ -286,40 +321,122 @@ app.post("/api/submissions", authenticateToken, submissionRateLimit, (req, res) 
   }
 
   const now = new Date();
+  const nowIso = now.toISOString();
+  const useOAuth = redditOAuthConfigured;
+  const retryableStatuses = [
+    "awaiting_reddit_verification",
+    "awaiting_fallback_code",
+    "verification_expired",
+    "verification_cancelled",
+    "verification_failed",
+    "withdrawn",
+  ];
+
+  function freshFlowPayload(existingId) {
+    if (useOAuth) {
+      const rawState = crypto.randomBytes(32).toString("base64url");
+      const expiresAt = new Date(now.getTime() + OAUTH_STATE_TTL_MS);
+      db.prepare(`
+        UPDATE reddit_submissions
+        SET status = 'awaiting_reddit_verification', oauth_state_hash = ?, oauth_expires_at = ?,
+            fallback_code = NULL, fallback_code_expires_at = NULL, failure_reason = NULL,
+            subreddit = NULL, post_title = NULL, post_body = NULL, post_created_utc = NULL,
+            post_permalink = NULL, reddit_account_id = NULL, ownership_fingerprint = NULL,
+            verified_at = NULL, withdrawn_at = NULL, updated_at = ?
+        WHERE id = ?
+      `).run(hashOAuthState(rawState), expiresAt.toISOString(), nowIso, existingId);
+      const authorizeUrl = buildRedditAuthorizeUrl({
+        clientId: REDDIT_CLIENT_ID,
+        redirectUri: REDDIT_REDIRECT_URI,
+        state: rawState,
+      });
+      return {
+        submission: submissionForClient(db.prepare("SELECT * FROM reddit_submissions WHERE id = ?").get(existingId)),
+        authorizeUrl,
+      };
+    }
+    const proofCode = generateProofCode();
+    const expiresAt = new Date(now.getTime() + FALLBACK_CODE_TTL_MS);
+    db.prepare(`
+      UPDATE reddit_submissions
+      SET status = 'awaiting_fallback_code', fallback_code = ?, fallback_code_expires_at = ?,
+          oauth_state_hash = NULL, oauth_expires_at = NULL, failure_reason = NULL,
+          subreddit = NULL, post_title = NULL, post_body = NULL, post_created_utc = NULL,
+          post_permalink = NULL, reddit_account_id = NULL, ownership_fingerprint = NULL,
+          verified_at = NULL, withdrawn_at = NULL, updated_at = ?
+      WHERE id = ?
+    `).run(proofCode, expiresAt.toISOString(), nowIso, existingId);
+    return {
+      submission: submissionForClient(db.prepare("SELECT * FROM reddit_submissions WHERE id = ?").get(existingId)),
+      proofCode,
+      fallbackInstructions: FALLBACK_INSTRUCTIONS,
+    };
+  }
+
   const submissionId = crypto.randomUUID();
-  const rawState = crypto.randomBytes(32).toString("base64url");
-  const expiresAt = new Date(now.getTime() + OAUTH_STATE_TTL_MS);
 
   try {
+    if (useOAuth) {
+      const rawState = crypto.randomBytes(32).toString("base64url");
+      const expiresAt = new Date(now.getTime() + OAUTH_STATE_TTL_MS);
+      db.prepare(`
+        INSERT INTO reddit_submissions (
+          id, user_id, reddit_post_id, reddit_url, consent_version, consented_at,
+          oauth_state_hash, oauth_expires_at, status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_reddit_verification', ?, ?)
+      `).run(
+        submissionId,
+        req.user.id,
+        normalized.postId,
+        normalized.canonicalUrl,
+        CONSENT_VERSION,
+        nowIso,
+        hashOAuthState(rawState),
+        expiresAt.toISOString(),
+        nowIso,
+        nowIso,
+      );
+      const authorizeUrl = buildRedditAuthorizeUrl({
+        clientId: REDDIT_CLIENT_ID,
+        redirectUri: REDDIT_REDIRECT_URI,
+        state: rawState,
+      });
+      return res.status(201).json({
+        submission: submissionForClient(db.prepare("SELECT * FROM reddit_submissions WHERE id = ?").get(submissionId)),
+        authorizeUrl,
+      });
+    }
+
+    const proofCode = generateProofCode();
+    const expiresAt = new Date(now.getTime() + FALLBACK_CODE_TTL_MS);
     db.prepare(`
       INSERT INTO reddit_submissions (
         id, user_id, reddit_post_id, reddit_url, consent_version, consented_at,
-        oauth_state_hash, oauth_expires_at, status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_reddit_verification', ?, ?)
+        status, fallback_code, fallback_code_expires_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 'awaiting_fallback_code', ?, ?, ?, ?)
     `).run(
       submissionId,
       req.user.id,
       normalized.postId,
       normalized.canonicalUrl,
       CONSENT_VERSION,
-      now.toISOString(),
-      hashOAuthState(rawState),
+      nowIso,
+      proofCode,
       expiresAt.toISOString(),
-      now.toISOString(),
-      now.toISOString(),
+      nowIso,
+      nowIso,
     );
-
-    const authorizeUrl = buildRedditAuthorizeUrl({
-      clientId: REDDIT_CLIENT_ID,
-      redirectUri: REDDIT_REDIRECT_URI,
-      state: rawState,
-    });
-    res.status(201).json({
+    return res.status(201).json({
       submission: submissionForClient(db.prepare("SELECT * FROM reddit_submissions WHERE id = ?").get(submissionId)),
-      authorizeUrl,
+      proofCode,
+      fallbackInstructions: FALLBACK_INSTRUCTIONS,
     });
   } catch (err) {
     if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
+      const existing = db.prepare("SELECT * FROM reddit_submissions WHERE reddit_post_id = ?").get(normalized.postId);
+      if (existing && existing.user_id === req.user.id && retryableStatuses.includes(existing.status)) {
+        return res.status(201).json(freshFlowPayload(existing.id));
+      }
       return res.status(409).json({ error: "That Reddit post has already been submitted" });
     }
     console.error(err);
@@ -327,88 +444,152 @@ app.post("/api/submissions", authenticateToken, submissionRateLimit, (req, res) 
   }
 });
 
-app.get("/api/submissions/reddit/callback", async (req, res) => {
-  const rawState = typeof req.query.state === "string" ? req.query.state : "";
-  const code = typeof req.query.code === "string" ? req.query.code : "";
-  if (!rawState || rawState.length > 256) return res.status(400).send("Invalid OAuth state");
-
-  const stateHash = hashOAuthState(rawState);
-  const submission = db.prepare("SELECT * FROM reddit_submissions WHERE oauth_state_hash = ?").get(stateHash);
-  if (!submission) return res.status(400).send("This verification link is invalid or has already been used");
-
-  const now = new Date();
-  if (!submission.oauth_expires_at || new Date(submission.oauth_expires_at).getTime() < now.getTime()) {
-    db.prepare(`
-      UPDATE reddit_submissions
-      SET status = 'verification_expired', oauth_state_hash = NULL, failure_reason = 'oauth_expired', updated_at = ?
-      WHERE id = ?
-    `).run(now.toISOString(), submission.id);
-    return submissionRedirect(res, submission.id, "expired");
-  }
-
-  if (req.query.error || !code) {
-    db.prepare(`
-      UPDATE reddit_submissions
-      SET status = 'verification_cancelled', oauth_state_hash = NULL, failure_reason = 'oauth_cancelled', updated_at = ?
-      WHERE id = ?
-    `).run(now.toISOString(), submission.id);
-    return submissionRedirect(res, submission.id, "cancelled");
-  }
-
+app.post("/api/submissions/:id/confirm-fallback", authenticateToken, async (req, res) => {
   try {
-    const accessToken = await exchangeRedditAuthorizationCode({
-      code,
-      clientId: REDDIT_CLIENT_ID,
-      clientSecret: REDDIT_CLIENT_SECRET,
-      redirectUri: REDDIT_REDIRECT_URI,
-      userAgent: REDDIT_USER_AGENT,
-    });
-    const verified = await fetchVerifiedRedditPost({
-      accessToken,
-      postId: submission.reddit_post_id,
-      userAgent: REDDIT_USER_AGENT,
-    });
+    const row = db.prepare("SELECT * FROM reddit_submissions WHERE id = ? AND user_id = ?").get(req.params.id, req.user.id);
+    if (!row) return res.status(404).json({ error: "Submission not found" });
+    if (row.status !== "awaiting_fallback_code") {
+      return res.status(409).json({ error: "Submission is not awaiting a fallback code" });
+    }
 
-    if (!verified.isOwner) {
+    const now = new Date();
+    if (!row.fallback_code_expires_at || new Date(row.fallback_code_expires_at).getTime() < now.getTime()) {
+      db.prepare(`
+        UPDATE reddit_submissions
+        SET status = 'verification_expired', fallback_code = NULL, fallback_code_expires_at = NULL, updated_at = ?
+        WHERE id = ?
+      `).run(now.toISOString(), row.id);
+      return res.status(410).json({ error: "Verification expired. Re-submit to get a fresh code." });
+    }
+
+    let post;
+    try {
+      post = await fetchFallbackPost(row.reddit_post_id, { userAgent: REDDIT_USER_AGENT });
+    } catch (err) {
+      console.error("Fallback post fetch failed:", err.message);
+      return res.status(502).json({ error: "Could not fetch the post from Reddit. Try again shortly." });
+    }
+
+    if (verifyFallbackEditCode(post, row.fallback_code)) {
+      const sanitized = sanitizeRedditPost(post);
+      db.prepare(`
+        UPDATE reddit_submissions
+        SET status = 'verified_pending_review', fallback_code = NULL, fallback_code_expires_at = NULL,
+            subreddit = ?, post_title = ?, post_body = ?, post_created_utc = ?, post_permalink = ?,
+            verified_at = ?, failure_reason = NULL, updated_at = ?
+        WHERE id = ?
+      `).run(
+        sanitized.subreddit,
+        sanitized.title,
+        sanitized.body,
+        sanitized.createdUtc,
+        sanitized.permalink,
+        now.toISOString(),
+        now.toISOString(),
+        row.id,
+      );
+      return res.status(200).json({ status: "verified_pending_review", message: "Case queued for review" });
+    }
+
+    db.prepare(`
+      UPDATE reddit_submissions
+      SET failure_reason = 'edit_code_not_found', updated_at = ?
+      WHERE id = ?
+    `).run(now.toISOString(), row.id);
+    return res.status(200).json({ status: "awaiting_fallback_code", message: "Code not found in your post yet — add it and try again" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/submissions/reddit/callback", async (req, res) => {
+  try {
+    const rawState = typeof req.query.state === "string" ? req.query.state : "";
+    const code = typeof req.query.code === "string" ? req.query.code : "";
+    if (!rawState || rawState.length > 256) return res.status(400).json({ error: "Invalid OAuth state" });
+
+    const stateHash = hashOAuthState(rawState);
+    const submission = db.prepare("SELECT * FROM reddit_submissions WHERE oauth_state_hash = ?").get(stateHash);
+    if (!submission) return res.status(400).json({ error: "This verification link is invalid or has already been used" });
+
+    const now = new Date();
+    if (!submission.oauth_expires_at || new Date(submission.oauth_expires_at).getTime() < now.getTime()) {
+      db.prepare(`
+        UPDATE reddit_submissions
+        SET status = 'verification_expired', oauth_state_hash = NULL, failure_reason = 'oauth_expired', updated_at = ?
+        WHERE id = ?
+      `).run(now.toISOString(), submission.id);
+      return submissionRedirect(res, submission.id, "expired");
+    }
+
+    if (req.query.error || !code) {
+      db.prepare(`
+        UPDATE reddit_submissions
+        SET status = 'verification_cancelled', oauth_state_hash = NULL, failure_reason = 'oauth_cancelled', updated_at = ?
+        WHERE id = ?
+      `).run(now.toISOString(), submission.id);
+      return submissionRedirect(res, submission.id, "cancelled");
+    }
+
+    try {
+      const accessToken = await exchangeRedditAuthorizationCode({
+        code,
+        clientId: REDDIT_CLIENT_ID,
+        clientSecret: REDDIT_CLIENT_SECRET,
+        redirectUri: REDDIT_REDIRECT_URI,
+        userAgent: REDDIT_USER_AGENT,
+      });
+      const verified = await fetchVerifiedRedditPost({
+        accessToken,
+        postId: submission.reddit_post_id,
+        userAgent: REDDIT_USER_AGENT,
+      });
+
+      if (!verified.isOwner) {
+        db.prepare(`
+          UPDATE reddit_submissions
+          SET status = 'verification_failed', oauth_state_hash = NULL,
+              failure_reason = 'reddit_account_does_not_match_post_author', updated_at = ?
+          WHERE id = ?
+        `).run(now.toISOString(), submission.id);
+        return submissionRedirect(res, submission.id, "owner_mismatch");
+      }
+
+      const post = sanitizeRedditPost(verified.post);
+      db.prepare(`
+        UPDATE reddit_submissions
+        SET status = 'verified_pending_review', oauth_state_hash = NULL, oauth_expires_at = NULL,
+            ownership_fingerprint = ?, reddit_account_id = ?, subreddit = ?, post_title = ?,
+            post_body = ?, post_created_utc = ?, post_permalink = ?, verified_at = ?,
+            failure_reason = NULL, updated_at = ?
+        WHERE id = ?
+      `).run(
+        ownershipFingerprint(verified.owner.name),
+        verified.owner.id,
+        post.subreddit,
+        post.title,
+        post.body,
+        post.createdUtc,
+        post.permalink,
+        now.toISOString(),
+        now.toISOString(),
+        submission.id,
+      );
+      return submissionRedirect(res, submission.id, "verified");
+    } catch (err) {
+      console.error("Reddit ownership verification failed:", err.message);
       db.prepare(`
         UPDATE reddit_submissions
         SET status = 'verification_failed', oauth_state_hash = NULL,
-            failure_reason = 'reddit_account_does_not_match_post_author', updated_at = ?
+            failure_reason = 'reddit_api_error', updated_at = ?
         WHERE id = ?
       `).run(now.toISOString(), submission.id);
-      return submissionRedirect(res, submission.id, "owner_mismatch");
+      return submissionRedirect(res, submission.id, "failed");
     }
-
-    const post = sanitizeRedditPost(verified.post);
-    db.prepare(`
-      UPDATE reddit_submissions
-      SET status = 'verified_pending_review', oauth_state_hash = NULL, oauth_expires_at = NULL,
-          ownership_fingerprint = ?, reddit_account_id = ?, subreddit = ?, post_title = ?,
-          post_body = ?, post_created_utc = ?, post_permalink = ?, verified_at = ?,
-          failure_reason = NULL, updated_at = ?
-      WHERE id = ?
-    `).run(
-      ownershipFingerprint(verified.owner.name),
-      verified.owner.id,
-      post.subreddit,
-      post.title,
-      post.body,
-      post.createdUtc,
-      post.permalink,
-      now.toISOString(),
-      now.toISOString(),
-      submission.id,
-    );
-    return submissionRedirect(res, submission.id, "verified");
   } catch (err) {
-    console.error("Reddit ownership verification failed:", err.message);
-    db.prepare(`
-      UPDATE reddit_submissions
-      SET status = 'verification_failed', oauth_state_hash = NULL,
-          failure_reason = 'reddit_api_error', updated_at = ?
-      WHERE id = ?
-    `).run(now.toISOString(), submission.id);
-    return submissionRedirect(res, submission.id, "failed");
+    console.error("OAuth callback error:", err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 

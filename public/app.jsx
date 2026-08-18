@@ -61,6 +61,7 @@ function Phase0Menu({ profiles, onSelectProfile, scoresByProfile }) {
               role="button"
               tabIndex={0}
               aria-label={`Select applicant ${num}, ${p.id}${hasPlayed ? `, played, ${score} points` : ", not yet played"}`}
+              data-card-num={num}
               aria-pressed={hasPlayed ? "true" : "false"}
               onClick={() => onSelectProfile(i)}
               onKeyDown={(e) => {
