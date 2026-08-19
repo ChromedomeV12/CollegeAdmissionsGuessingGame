@@ -98,8 +98,8 @@ function ConfettiBurst({ x, y, active }) {
 // ─── Celebration banner ───────────────────────────────────────────────────────
 function CelebrationBanner({ score, accuracy }) {
   if (score <= 5) return null;
-  const isGreat = accuracy >= 80 || score >= 30;
-  const isGood = accuracy >= 50 || score >= 15;
+  const isGreat = score >= 80;
+  const isGood = score >= 60;
   if (!isGood) return null;
 
     <div className="ao-celebrate-banner" style={{
@@ -118,7 +118,7 @@ function CelebrationBanner({ score, accuracy }) {
         <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-tertiary)", marginTop: "var(--sp-1)" }}>
           {isGreat
             ? `${accuracy}% accuracy on admits — you read this profile well.`
-            : `You caught ${score > 0 ? "+" + score : score} pts on this one.`}
+            : `You scored ${score}/100 on this case.`}
         </div>
       </div>
     </div>
@@ -128,87 +128,86 @@ function CelebrationBanner({ score, accuracy }) {
 
 function scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, noLacClaim) {
   const T = window.TIERS;
+  const SC = window.SCORING;
   const admittedSet = new Set(T.getAdmittedSchools(profile).map(T.normSchool));
 
   const uniAvail = computeAvailable(profile, universityTierPick, "uni");
   const lacAvail = computeAvailable(profile, noLacClaim ? null : lacTierPick, "lac");
   const visible = [...uniAvail.all, ...lacAvail.all];
 
-  const allLacAdmits = T.getAdmittedSchools(profile)
-    .filter(s => T.schoolKind(s) === "lac");
-  const hasAnyLacAdmit = allLacAdmits.length > 0;
-  const declaredNoLac = !!noLacClaim;
-
-  const rows = visible.map(s => {
-    // Check if the school was selected. We don't override this with !declaredNoLac
-    // because if declaredNoLac is true, lacAvail is empty and visible only contains Uni schools.
-    const wasSelected = schoolSelections.has(s.key);
-    const wasAdmit = admittedSet.has(s.key);
-    
-    // Determine if the tier band for this school is a hit or miss
-    const kind = T.schoolKind(s.name);
-    const isTierCorrect = (kind === "uni") ? uniAvail.hit : (kind === "lac" ? lacAvail.hit : false);
-    
-    let delta = 0, status;
-    if (wasSelected && wasAdmit) { 
-        delta = +10; 
-        status = "correct"; 
+  // Actual uni/LAC band — the best (first in tier-list order) ranked band
+  // that contains at least one admit of that kind. Reuses the same tier-set
+  // + admit-key pattern as computeAvailable (getSchoolsInTier over admitted
+  // keys). -1 when no admit of that kind lands in any ranked band, which
+  // tierPoints(...) maps to 0 points.
+  function actualBandIndex(tierList, kind) {
+    const admitKeys = new Set(
+      T.getAdmittedSchools(profile)
+        .filter(n => T.schoolKind(n) === kind)
+        .map(T.normSchool)
+    );
+    if (admitKeys.size === 0) return -1;
+    for (let i = 0; i < tierList.length; i++) {
+      const band = T.getSchoolsInTier(tierList[i], kind);
+      if (band.some(s => admitKeys.has(s.key))) return i;
     }
-    else if (wasSelected && !wasAdmit) { 
-        // Only deduct if tier band was correct
-        delta = isTierCorrect ? -2 : 0; 
-        status = "wrong"; 
-    }
-    else if (!wasSelected && wasAdmit) { 
-        delta = 0;   
-        status = "missed"; 
-    }
-    else { 
-        delta = 0;  
-        status = "skipped-rejected"; 
-    }
-    return { ...s, wasSelected, wasAdmit, delta, status };
-  });
-
-  // Tier-band bonuses — picking a band that contains an admit.
-  const tierBonuses = [];
-  if (universityTierPick && uniAvail.hit) tierBonuses.push({ kind: "University", delta: +10 });
-  if (!declaredNoLac && lacTierPick && lacAvail.hit) tierBonuses.push({ kind: "LAC", delta: +10 });
-
-  // Tier-band penalties — picking a band that contains none of the admits.
-  const tierPenalties = [];
-  if (universityTierPick && !uniAvail.hit) tierPenalties.push({ kind: "University", tier: universityTierPick, delta: -5 });
-  if (!declaredNoLac && lacTierPick && !lacAvail.hit) {
-    tierPenalties.push({ kind: "LAC", tier: lacTierPick, delta: -5 });
+    return -1;
   }
 
-  // "No LAC admit" claim — separate bonus / penalty row.
-  const lacClaim = declaredNoLac
-    ? (hasAnyLacAdmit
-        ? { kind: "no-lac-wrong",   delta: -5, label: "Claimed no LAC admit — applicant did have LAC admits" }
-        : { kind: "no-lac-correct", delta: +10, label: "Correctly identified no LAC admit" })
-    : null;
+  const uniActualIdx = actualBandIndex(T.UNI_TIER_LIST, "uni");
+  const lacActualIdx = actualBandIndex(T.LAC_TIER_LIST, "lac");
+  const hasLacAdmit = T.getAdmittedSchools(profile).some(n => T.schoolKind(n) === "lac");
 
-  const baseScore = rows.reduce((acc, r) => acc + r.delta, 0);
-  const tierBonusTotal = tierBonuses.reduce((acc, b) => acc + b.delta, 0);
-  const tierPenaltyTotal = tierPenalties.reduce((acc, p) => acc + p.delta, 0);
-  const claimDelta = lacClaim ? lacClaim.delta : 0;
-  const score = baseScore + tierBonusTotal + tierPenaltyTotal + claimDelta;
+  // Per-school rows are kept for display only. Deltas are informational (0);
+  // the aggregate selection score comes from SCORING.caseScore's Jaccard, so
+  // we never reintroduce per-school -2/-5 deductions.
+  const rows = visible.map(s => {
+    const wasSelected = schoolSelections.has(s.key);
+    const wasAdmit = admittedSet.has(s.key);
+    let status;
+    if (wasSelected && wasAdmit) status = "correct";
+    else if (wasSelected && !wasAdmit) status = "wrong";
+    else if (!wasSelected && wasAdmit) status = "missed";
+    else status = "skipped-rejected";
+    return { ...s, wasSelected, wasAdmit, delta: 0, status };
+  });
 
-  const correct = rows.filter(r => r.status === "correct").length;
-  const totalAdmitsInView = rows.filter(r => r.wasAdmit).length;
-  const accuracy = totalAdmitsInView === 0 ? 0 : Math.round((correct / totalAdmitsInView) * 100);
+  // Admits that fell inside the player's visible tier window — the
+  // "admittedInViewKeys" set the selection Jaccard is measured against.
+  const admittedInViewKeys = visible.filter(s => admittedSet.has(s.key)).map(s => s.key);
 
-  return { rows, score, accuracy, uniAvail, lacAvail, tierBonuses, tierPenalties, lacClaim };
+  const cs = SC.caseScore({
+    uniPickIdx: T.UNI_TIER_LIST.indexOf(universityTierPick),
+    lacPickIdx: noLacClaim ? -1 : T.LAC_TIER_LIST.indexOf(lacTierPick),
+    noLacClaim: !!noLacClaim,
+    hasLacAdmit,
+    uniActualIdx,
+    lacActualIdx,
+    selectedKeys: [...schoolSelections],
+    admittedInViewKeys,
+  });
+
+  return {
+    rows,
+    score: cs.score,
+    accuracy: cs.accuracy,
+    uniPts: cs.uniPts,
+    lacPts: cs.lacPts,
+    selectionPts: cs.selectionPts,
+    hasLacAdmit,
+    uniAvail,
+    lacAvail,
+    uniActualIdx,
+    lacActualIdx,
+  };
 }
 
 function Phase4Results({
   profile, universityTierPick, lacTierPick, noLacClaim, schoolSelections,
-  totalPoints, rank, onCommitScore,
+  average, rank, onCommitScore,
   onTryAgain, onNext, hasNext
 }) {
-  const T = window.TIERS;
-  const { rows, score, accuracy, uniAvail, lacAvail, tierBonuses, tierPenalties, lacClaim } =
+  const { rows, score, accuracy, uniAvail, lacAvail, uniPts, lacPts, selectionPts, hasLacAdmit } =
     useMemo(() =>
       scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, noLacClaim),
       [profile, universityTierPick, lacTierPick, schoolSelections, noLacClaim]
@@ -247,15 +246,12 @@ function Phase4Results({
       {/* Score cards */}
       <div className="grid grid-2 stagger" style={{ marginBottom: "var(--sp-5)" }}>
         <div className="card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
-          <div className="label">Points earned</div>
-          <div className="score-pop" style={{ marginTop: "var(--sp-2)", color: score < 0 ? "var(--accent-danger-fg)" : "var(--text-primary)" }}>
-            <AnimatedNum value={score} format={n => {
-              const r = Math.round(n);
-              return (r > 0 ? "+" : "") + r;
-            }} />
+          <div className="label">Case score</div>
+          <div className="score-pop" style={{ marginTop: "var(--sp-2)", color: "var(--text-primary)" }}>
+            <AnimatedNum value={score} format={n => String(Math.round(n))} />
           </div>
           <div className="label" style={{ color: "var(--text-tertiary)", marginTop: "var(--sp-2)" }}>
-            from this profile
+            from this profile · out of 100
           </div>
         </div>
         <div className="card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
@@ -264,7 +260,7 @@ function Phase4Results({
             <AnimatedNum value={accuracy} format={n => Math.round(n) + "%"} />
           </div>
           <div className="label" style={{ color: "var(--text-tertiary)", marginTop: "var(--sp-2)" }}>
-            correct picks ÷ admits in your tier
+            selection overlap with admits in view
           </div>
         </div>
       </div>
@@ -287,49 +283,44 @@ function Phase4Results({
           admits={lacAvail.all.filter(a => lacAvail.admitted.has(a.key)).map(a => a.name)}
           actualTier={null}
         />
-        {tierBonuses.length > 0 && (
-          <div style={{ marginTop: "var(--sp-3)", paddingTop: "var(--sp-3)", borderTop: "0.5px solid var(--border-1)" }}>
-            {tierBonuses.map((b, i) => (
-              <div key={i} className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
-                <span style={{ color: "var(--accent-ok-fg)" }}>
-                  <i className="ti ti-check" style={{ marginRight: 6 }} />
-                  Correct {b.kind.toLowerCase()} tier
-                </span>
-                <span className="num" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-ok-fg)" }}>
-                  +{b.delta}
-                </span>
-              </div>
-            ))}
+        {/* Points breakdown — three non-negative components (0..100 total).
+            Replaces the old tierBonuses / tierPenalties / lacClaim +/- rows. */}
+        <div style={{ marginTop: "var(--sp-3)", paddingTop: "var(--sp-3)", borderTop: "0.5px solid var(--border-1)" }}>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
+            <span style={{ color: "var(--text-secondary)" }}>
+              <i className="ti ti-target-arrow" style={{ marginRight: 6 }} />
+              Reach · university tier
+            </span>
+            <span className="num" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-ok-fg)" }}>
+              +{uniPts}
+            </span>
           </div>
-        )}
-        {tierPenalties.length > 0 && (
-          <div style={{ marginTop: "var(--sp-3)", paddingTop: "var(--sp-3)", borderTop: "0.5px solid var(--border-1)" }}>
-            {tierPenalties.map((p, i) => (
-              <div key={i} className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
-                <span style={{ color: "var(--accent-danger-fg)" }}>
-                  <i className="ti ti-alert-triangle" style={{ marginRight: 6 }} />
-                  Wrong {p.kind.toLowerCase()} band — no admits in {p.tier}
-                </span>
-                <span className="num" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-danger-fg)" }}>
-                  {p.delta}
-                </span>
-              </div>
-            ))}
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
+            <span style={{ color: "var(--text-secondary)" }}>
+              <i className="ti ti-building-monument" style={{ marginRight: 6 }} />
+              {noLacClaim ? "LAC · no admit claimed" : "LAC tier"}
+            </span>
+            <span className="num" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-ok-fg)" }}>
+              +{lacPts}
+            </span>
           </div>
-        )}
-        {lacClaim && (
-          <div style={{ marginTop: "var(--sp-3)", paddingTop: "var(--sp-3)", borderTop: "0.5px solid var(--border-1)" }}>
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
-              <span style={{ color: lacClaim.delta > 0 ? "var(--accent-ok-fg)" : "var(--accent-danger-fg)" }}>
-                <i className={"ti ti-" + (lacClaim.delta > 0 ? "check" : "x")} style={{ marginRight: 6 }} />
-                {lacClaim.label}
-              </span>
-              <span className="num" style={{ fontFamily: "var(--font-mono)", color: lacClaim.delta > 0 ? "var(--accent-ok-fg)" : "var(--accent-danger-fg)" }}>
-                {lacClaim.delta > 0 ? "+" : ""}{lacClaim.delta}
-              </span>
+          {noLacClaim && (
+            <div className="label" style={{ color: "var(--text-tertiary)", padding: "var(--sp-1) 0 var(--sp-2)" }}>
+              {hasLacAdmit
+                ? "Claimed no LAC admit — applicant did have LAC admits"
+                : "Correctly identified no LAC admit"}
             </div>
+          )}
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
+            <span style={{ color: "var(--text-secondary)" }}>
+              <i className="ti ti-checks" style={{ marginRight: 6 }} />
+              Selection · admit overlap
+            </span>
+            <span className="num" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-ok-fg)" }}>
+              +{selectionPts}
+            </span>
           </div>
-        )}
+        </div>
       </div>
 
       {/* School breakdown */}
@@ -382,15 +373,15 @@ function Phase4Results({
         <div className="card stagger" style={{ marginTop: "var(--sp-4)" }}>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline", marginBottom: "var(--sp-3)" }}>
             <div className="label">Session ranking</div>
-            <div className="label" style={{ color: "var(--text-tertiary)" }}>
-              <span className="num">{totalPoints}</span> pts total
-            </div>
+            <span className="badge badge--neutral" style={{ fontFamily: "var(--font-mono)" }}>
+              <span className="num">{average ?? 0}</span> avg · season average
+            </span>
           </div>
-          <RankProgressBar rank={rank} totalPoints={totalPoints} />
+          <RankProgressBar rank={rank} totalPoints={average ?? 0} />
           <div className="row" style={{ marginTop: "var(--sp-4)", justifyContent: "space-between", flexWrap: "wrap", gap: "var(--sp-2)" }}>
             <span className="label" style={{ color: "var(--text-tertiary)" }}>This case contributed</span>
-            <span className="num" style={{ fontFamily: "var(--font-mono)", color: score < 0 ? "var(--accent-danger-fg)" : "var(--accent-ok-fg)" }}>
-              {score > 0 ? "+" : ""}{score} pts
+            <span className="num" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-ok-fg)" }}>
+              {score}/100
             </span>
           </div>
         </div>

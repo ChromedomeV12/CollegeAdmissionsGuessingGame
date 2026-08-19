@@ -108,10 +108,10 @@ function Phase2Tier({
           <div className="grow">
             <div className="row" style={{ gap: "var(--sp-2)" }}>
               <span className="name">Applicant was not admitted to any LAC</span>
-              <span className="chip">+10 / −5</span>
+              <span className="chip">15 pts</span>
             </div>
             <div className="muted" style={{ marginTop: "var(--sp-1)", fontSize: "var(--fs-sm)" }}>
-              Claim this if the profile had zero LAC admits. A wrong call — they did land an LAC admit — costs you 5 points.
+              Claim this if the profile had zero LAC admits. Right — you earn the full 15 LAC points. Wrong — they did land an LAC admit — scores 0.
             </div>
           </div>
         </div>

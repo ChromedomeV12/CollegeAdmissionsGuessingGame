@@ -27,7 +27,7 @@ This project is co-owned and co-developed by ChromedomeV12 (repo owner) and Maso
 | GET | `/api/profiles` | — | All playable profiles. |
 | GET | `/api/profiles/:id` | — | One profile (full detail, fetched when tiers lock). |
 | POST | `/api/scores` | Bearer | `{profile_id, score, breakdown}` — keeps the higher score per (user, profile). |
-| GET | `/api/leaderboard` | — | `[{username, games, total}]`. |
+| GET | `/api/leaderboard` | — | `[{username, games, avg, best}]` — `avg` is the rounded mean per-case score over distinct cases; only players with `>= 5` cases qualify. |
 | GET | `/api/stats` | — | Aggregate play stats. |
 | GET | `/api/submissions/config` | Bearer | Public-safe configuration state and current consent version. |
 | GET | `/api/submissions` | Bearer | The current user's private submission history. |
@@ -38,10 +38,13 @@ This project is co-owned and co-developed by ChromedomeV12 (repo owner) and Maso
 
 ## Scoring
 
-- `+10` correct school, `−2` wrong school *(only if the tier band was a hit)*
-- `+10` correct University tier band, `+10` correct LAC tier band
-- `−5` per tier band that contained none of the admits
-- "No LAC admit" claim scored explicitly: `+10` correct / `−5` wrong (waives standard LAC penalties)
+Every case scores **0–100 — never negative** — split across three skills:
+
+- **School selection (70):** Jaccard overlap `|selected ∩ admitted| / |selected ∪ admitted|` over the schools in view. Proportional credit for every correct pick; no penalty for wrong picks, only lost potential.
+- **University tier (15):** distance credit — correct band 15, off-by-one 9, off-by-two 5, else 0.
+- **LAC tier (15):** same ladder; the "No LAC Admit" claim scores the full 15 when correct and 0 when wrong.
+
+The leaderboard ranks by **average per-case score** over your distinct cases (minimum 5 to qualify), not by total — so it measures skill, not how many cases you grinded.
 
 ## Local setup
 

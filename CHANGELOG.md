@@ -2,6 +2,13 @@
 
 All notable changes to this project. Dates are YYYY-MM-DD.
 
+## 2026-08-19 — Scoring & ranking redesign (0–100, skill-based)
+
+- **Normalized per-case scoring (0–100, never negative).** New pure `public/scoring.js` (`window.SCORING`): school selection = 70 × Jaccard overlap with the admits in view; University tier = distance credit (15/9/5/0); LAC tier = same ladder with the "No LAC Admit" claim folded in (15 correct / 0 wrong). `scoreFor` in `phase4-results.jsx` now composes these; per-school rows remain for display but carry no −2/−5.
+- **Skill-based ranking.** `ranks.js` ladder re-thresholded on the average scale (Oracle at ≥90). The app header and leaderboard now show **average** (`avg`) + case count + best, not raw sum.
+- **Backend.** `/api/scores` validates 0–100; `/api/leaderboard` returns `{username, games, avg, best}` ordered by `avg` with a `LEADERBOARD_MIN_GAMES = 5` floor; `SCORING_VERSION = "2"` meta migration wipes incompatible legacy scores once on startup.
+- **Tests.** 12 new `test/scoring.test.js` unit tests (Jaccard, tier distance, case-score composition, no-LAC branches); e2e now plays 5 distinct cases and asserts the new leaderboard shape.
+
 ## 2026-08-18 — Consent-first content import (Mason's-Code) + review fixes
 
 ### Ownership-verified import (dual mode)

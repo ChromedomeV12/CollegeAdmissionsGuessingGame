@@ -96,6 +96,11 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_reddit_submissions_status
     ON reddit_submissions (status, created_at ASC);
+
+  CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
 `);
 
 // ─── Schema Migration: fallback code columns ─────────────────────────────────
@@ -106,6 +111,20 @@ db.exec(`
   }
   if (!cols.includes("fallback_code_expires_at")) {
     db.exec("ALTER TABLE reddit_submissions ADD COLUMN fallback_code_expires_at TEXT");
+  }
+}
+
+// ─── Schema Migration: scoring version reset ──────────────────────────────────
+const SCORING_VERSION = "2";
+{
+  const row = db.prepare("SELECT value FROM meta WHERE key = 'scoring_version'").get();
+  if (!row || row.value !== SCORING_VERSION) {
+    console.log(`Resetting scores for scoring version ${SCORING_VERSION} (was ${row ? row.value : "none"})...`);
+    db.exec("DELETE FROM scores");
+    db.prepare(`
+      INSERT INTO meta (key, value) VALUES ('scoring_version', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(SCORING_VERSION);
   }
 }
 
@@ -637,8 +656,8 @@ app.post("/api/scores", authenticateToken, (req, res) => {
   if (typeof profileId !== 'string' || profileId.length === 0 || profileId.length > 64) {
     return res.status(400).json({ error: "profile_id must be a non-empty string up to 64 characters" });
   }
-  if (!Number.isInteger(score) || score < -100 || score > 100) {
-    return res.status(400).json({ error: "score must be an integer between -100 and 100" });
+  if (!Number.isInteger(score) || score < 0 || score > 100) {
+    return res.status(400).json({ error: "score must be an integer between 0 and 100" });
   }
 
   try {
@@ -660,16 +679,22 @@ app.post("/api/scores", authenticateToken, (req, res) => {
   }
 });
 
+const LEADERBOARD_MIN_GAMES = 5;
+
 app.get("/api/leaderboard", (req, res) => {
   try {
     const rows = db.prepare(`
-      SELECT u.username, COUNT(s.profile_id) as games, SUM(s.score) as total 
-      FROM users u 
-      JOIN scores s ON u.id = s.user_id 
-      GROUP BY u.id 
-      ORDER BY total DESC 
+      SELECT u.username,
+             COUNT(s.profile_id) AS games,
+             ROUND(AVG(s.score)) AS avg,
+             MAX(s.score) AS best
+      FROM users u
+      JOIN scores s ON u.id = s.user_id
+      GROUP BY u.id
+      HAVING games >= ?
+      ORDER BY avg DESC
       LIMIT 100
-    `).all();
+    `).all(LEADERBOARD_MIN_GAMES);
     res.json(rows);
   } catch (err) {
     console.error(err);

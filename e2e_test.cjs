@@ -254,157 +254,190 @@ async function main() {
     await page.waitForSelector('[data-screen-label="00 Menu"]', { timeout: POLL_TIMEOUT_MS });
     log("PASS returned to game from submission center");
 
-    // ── Step 2: Select FIRST profile (Phase0Menu) ───────────────────────────
-    // app.jsx Phase0Menu: each profile is div.card.school-card with onClick.
-    // Scope to the menu screen so we don't match school cards elsewhere.
-    await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: SHORT_TIMEOUT_MS });
-    await page.evaluate(() => {
-      const card = document.querySelector('[data-screen-label="00 Menu"] .school-card');
-      if (!card) throw new Error("First profile card not found in menu");
-      card.click();
-    });
-    // Selecting a profile calls resetForProfile() -> setPhase(1) -> Phase1Profile.
-    await page.waitForSelector('[data-screen-label="01 Profile"]', { timeout: POLL_TIMEOUT_MS });
-    log("PASS selected first profile, reached Phase1 viewer");
+    // ── Step 2: Drive 5 DISTINCT profiles through the full game flow ───────
+    // Loop menu -> profile viewer (01) -> tier (02) -> schools (03) -> reveal
+    // (04) -> back to menu over profile card indices 0..4. Each completed
+    // game commits a score via POST /api/scores; after 5 distinct profiles the
+    // user qualifies for the leaderboard (LEADERBOARD_MIN_GAMES=5).
+    const NUM_PROFILES = 5;
+    for (let profileIdx = 0; profileIdx < NUM_PROFILES; profileIdx++) {
+      // Select the profileIdx-th profile card in Phase0Menu. app.jsx Phase0Menu
+      // renders each profile as div.card.school-card with onClick; index into
+      // the live NodeList so each loop iteration picks a distinct profile.
+      await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: SHORT_TIMEOUT_MS });
+      await page.evaluate((idx) => {
+        const cards = document.querySelectorAll('[data-screen-label="00 Menu"] .school-card');
+        const card = cards[idx];
+        if (!card) throw new Error(`Profile card ${idx} not found in menu (have ${cards.length})`);
+        card.click();
+      }, profileIdx);
+      // Selecting a profile calls resetForProfile() -> setPhase(1) -> Phase1Profile.
+      await page.waitForSelector('[data-screen-label="01 Profile"]', { timeout: POLL_TIMEOUT_MS });
+      log(`PASS selected profile #${profileIdx}, reached Phase1 viewer`);
 
-    // ── Step 3: Phase1 -> Phase2 via "Start guessing" button ────────────────
-    // phase1-profile.jsx ~line 30: <Btn onClick={onStart} iconRight="arrow-right">Start guessing</Btn>
-    await page.waitForFunction(
-      () => [...document.querySelectorAll("button")].some((b) => b.textContent.includes("Start guessing")),
-      { timeout: SHORT_TIMEOUT_MS }
-    );
-    await page.evaluate(() => {
-      const b = [...document.querySelectorAll("button")].find((x) => x.textContent.includes("Start guessing"));
-      if (!b) throw new Error("Start guessing button not found");
-      b.click();
-    });
-    await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: POLL_TIMEOUT_MS });
-    log("PASS advanced to Phase2 tier selection");
-
-    // ── Step 4: Phase2 — pick a University tier + no-LAC claim, then lock ───
-    // phase2-tier.jsx: Panel A ("Panel A · University tier") holds TierPickCard
-    // <button>s for UNI_TIER_LIST = [HYPSM, T10, T15, T20, T30, T50]. Click the
-    // first one (HYPSM) to set universityTierPick.
-    await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: SHORT_TIMEOUT_MS });
-    await page.evaluate(() => {
-      const cards = [...document.querySelectorAll('[data-screen-label="02 Tier"] .card')];
-      const panelA = cards.find((c) => c.textContent.includes("Panel A"));
-      if (!panelA) throw new Error("Panel A (University tier) not found");
-      const btn = panelA.querySelector("button");
-      if (!btn) throw new Error("No university tier button in Panel A");
-      btn.click();
-    });
-    log("PASS picked first university tier (HYPSM)");
-
-    // No-LAC claim: phase2-tier.jsx ~line 93-110, a div[role="button"] whose
-    // text contains "Applicant was not admitted to any LAC". Clicking toggles
-    // noLacClaim=true and clears lacTierPick.
-    await page.waitForFunction(
-      () => [...document.querySelectorAll('[data-screen-label="02 Tier"] div[role="button"]')]
-        .some((d) => d.textContent.includes("Applicant was not admitted to any LAC")),
-      { timeout: SHORT_TIMEOUT_MS }
-    );
-    await page.evaluate(() => {
-      const claim = [...document.querySelectorAll('[data-screen-label="02 Tier"] div[role="button"]')]
-        .find((d) => d.textContent.includes("Applicant was not admitted to any LAC"));
-      if (!claim) throw new Error("No-LAC claim control not found");
-      claim.click();
-    });
-    log("PASS toggled no-LAC claim");
-
-    // Lock button: <Btn onClick={onLock} iconRight="lock">Lock in predictions</Btn>
-    // disabled until universityTierPick && (lacTierPick || noLacClaim). Wait for
-    // it to be enabled, then click. onLock fetches /api/profiles/:id then
-    // setPhase(3).
-    await page.waitForFunction(
-      () => [...document.querySelectorAll("button")].some(
-        (b) => b.textContent.includes("Lock in predictions") && !b.disabled
-      ),
-      { timeout: SHORT_TIMEOUT_MS }
-    );
-    await Promise.all([
-      page.waitForSelector('[data-screen-label="03 Schools"]', { timeout: POLL_TIMEOUT_MS }),
-      page.evaluate(() => {
-        const b = [...document.querySelectorAll("button")].find((x) => x.textContent.includes("Lock in predictions"));
-        if (!b) throw new Error("Lock in predictions button not found");
+      // Phase1 -> Phase2 via "Start guessing" button.
+      // phase1-profile.jsx ~line 30: <Btn onClick={onStart} iconRight="arrow-right">Start guessing</Btn>
+      await page.waitForFunction(
+        () => [...document.querySelectorAll("button")].some((b) => b.textContent.includes("Start guessing")),
+        { timeout: SHORT_TIMEOUT_MS }
+      );
+      await page.evaluate(() => {
+        const b = [...document.querySelectorAll("button")].find((x) => x.textContent.includes("Start guessing"));
+        if (!b) throw new Error("Start guessing button not found");
         b.click();
-      }),
-    ]);
-    log("PASS locked tiers, reached Phase3 school selection");
+      });
+      await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: POLL_TIMEOUT_MS });
+      log(`PASS [profile #${profileIdx}] advanced to Phase2 tier selection`);
 
-    // ── Step 5: Phase3 -> Phase4 via "Reveal results" (no picks required) ────
-    // phase3-school.jsx ~line 230: <Btn onClick={onReveal} iconRight="sparkles">Reveal results</Btn>
-    // onReveal just setPhase(4); no disabled gate on school selections.
-    await page.waitForFunction(
-      () => [...document.querySelectorAll("button")].some((b) => b.textContent.includes("Reveal results")),
-      { timeout: SHORT_TIMEOUT_MS }
-    );
-    await Promise.all([
-      page.waitForSelector('[data-screen-label="04 Reveal"]', { timeout: POLL_TIMEOUT_MS }),
-      page.evaluate(() => {
-        const b = [...document.querySelectorAll("button")].find((x) => x.textContent.includes("Reveal results"));
-        if (!b) throw new Error("Reveal results button not found");
-        b.click();
-      }),
-    ]);
-    log("PASS revealed results, reached Phase4");
+      // Phase2 — pick a University tier + no-LAC claim, then lock.
+      // phase2-tier.jsx: Panel A ("Panel A · University tier") holds TierPickCard
+      // <button>s for UNI_TIER_LIST = [HYPSM, T10, T15, T20, T30, T50]. Click the
+      // first one (HYPSM) to set universityTierPick.
+      await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: SHORT_TIMEOUT_MS });
+      await page.evaluate(() => {
+        const cards = [...document.querySelectorAll('[data-screen-label="02 Tier"] .card')];
+        const panelA = cards.find((c) => c.textContent.includes("Panel A"));
+        if (!panelA) throw new Error("Panel A (University tier) not found");
+        const btn = panelA.querySelector("button");
+        if (!btn) throw new Error("No university tier button in Panel A");
+        btn.click();
+      });
+      log(`PASS [profile #${profileIdx}] picked first university tier (HYPSM)`);
 
-    // ── Step 6: Confirm Phase4 shows a points number ────────────────────────
-    // phase4-results.jsx ~line 248-257: <div class="label">Points earned</div>
-    // then <div class="score-pop"> with <span class="num"> (AnimatedNum).
-    await page.waitForSelector('[data-screen-label="04 Reveal"] .score-pop .num', { timeout: SHORT_TIMEOUT_MS });
-    // AnimatedNum eases 0->target over 900ms; wait for a stable integer.
-    await page.waitForFunction(
-      () => {
-        const el = document.querySelector('[data-screen-label="04 Reveal"] .score-pop .num');
-        if (!el) return false;
-        const t = (el.textContent || "").trim();
-        return /^[+-]?\d+$/.test(t);
-      },
-      { timeout: SHORT_TIMEOUT_MS }
-    );
-    const pointsText = await page.evaluate(
-      () => (document.querySelector('[data-screen-label="04 Reveal"] .score-pop .num') || {}).textContent || ""
-    );
-    log("PASS Phase4 shows points:", pointsText.trim());
+      // No-LAC claim: phase2-tier.jsx ~line 93-110, a div[role="button"] whose
+      // text contains "Applicant was not admitted to any LAC". Clicking toggles
+      // noLacClaim=true and clears lacTierPick.
+      await page.waitForFunction(
+        () => [...document.querySelectorAll('[data-screen-label="02 Tier"] div[role="button"]')]
+          .some((d) => d.textContent.includes("Applicant was not admitted to any LAC")),
+        { timeout: SHORT_TIMEOUT_MS }
+      );
+      await page.evaluate(() => {
+        const claim = [...document.querySelectorAll('[data-screen-label="02 Tier"] div[role="button"]')]
+          .find((d) => d.textContent.includes("Applicant was not admitted to any LAC"));
+        if (!claim) throw new Error("No-LAC claim control not found");
+        claim.click();
+      });
+      log(`PASS [profile #${profileIdx}] toggled no-LAC claim`);
 
-    // ── Step 7: Return to menu via topbar "Menu" button ─────────────────────
-    // app.jsx ~line 222: <button ... onClick={goNextProfile}><i class="ti ti-list"/> Menu</button>
-    // (only rendered when phase>0). goNextProfile -> setPhase(0); setProfileIdx(null).
-    await page.waitForFunction(
-      () => [...document.querySelectorAll("button")].some((b) => b.textContent.trim() === "Menu"),
-      { timeout: SHORT_TIMEOUT_MS }
-    );
-    await Promise.all([
-      page.waitForSelector('[data-screen-label="00 Menu"]', { timeout: POLL_TIMEOUT_MS }),
-      page.evaluate(() => {
-        const b = [...document.querySelectorAll("button")].find((x) => x.textContent.trim() === "Menu");
-        if (!b) throw new Error("Menu button not found");
-        b.click();
-      }),
-    ]);
-    log("PASS returned to Phase0 menu");
+      // Lock button: <Btn onClick={onLock} iconRight="lock">Lock in predictions</Btn>
+      // disabled until universityTierPick && (lacTierPick || noLacClaim). Wait for
+      // it to be enabled, then click. onLock fetches /api/profiles/:id then
+      // setPhase(3).
+      await page.waitForFunction(
+        () => [...document.querySelectorAll("button")].some(
+          (b) => b.textContent.includes("Lock in predictions") && !b.disabled
+        ),
+        { timeout: SHORT_TIMEOUT_MS }
+      );
+      await Promise.all([
+        page.waitForSelector('[data-screen-label="03 Schools"]', { timeout: POLL_TIMEOUT_MS }),
+        page.evaluate(() => {
+          const b = [...document.querySelectorAll("button")].find((x) => x.textContent.includes("Lock in predictions"));
+          if (!b) throw new Error("Lock in predictions button not found");
+          b.click();
+        }),
+      ]);
+      log(`PASS [profile #${profileIdx}] locked tiers, reached Phase3 school selection`);
 
-    // ── Step 8: Assert leaderboard row for our user with games >= 1 ─────────
-    // Phase4 mount commits score via POST /api/scores (fire-and-forget fetch in
-    // app.jsx commitScore). Poll /api/leaderboard until our row appears.
+      // Phase3 -> Phase4 via "Reveal results" (no picks required).
+      // phase3-school.jsx ~line 230: <Btn onClick={onReveal} iconRight="sparkles">Reveal results</Btn>
+      // onReveal just setPhase(4); no disabled gate on school selections.
+      await page.waitForFunction(
+        () => [...document.querySelectorAll("button")].some((b) => b.textContent.includes("Reveal results")),
+        { timeout: SHORT_TIMEOUT_MS }
+      );
+      await Promise.all([
+        page.waitForSelector('[data-screen-label="04 Reveal"]', { timeout: POLL_TIMEOUT_MS }),
+        page.evaluate(() => {
+          const b = [...document.querySelectorAll("button")].find((x) => x.textContent.includes("Reveal results"));
+          if (!b) throw new Error("Reveal results button not found");
+          b.click();
+        }),
+      ]);
+      log(`PASS [profile #${profileIdx}] revealed results, reached Phase4`);
+
+      // ── Confirm Phase4 shows an integer score 0..100 in .score-pop .num ──
+      // phase4-results.jsx renders <div class="score-pop"><span class="num">
+      // (AnimatedNum) holding the per-case score (0-100) from SCORING.caseScore.
+      await page.waitForSelector('[data-screen-label="04 Reveal"] .score-pop .num', { timeout: SHORT_TIMEOUT_MS });
+      // AnimatedNum eases 0->target over 900ms; wait for a stable integer in
+      // the 0..100 range (1-3 digits, no sign).
+      await page.waitForFunction(
+        () => {
+          const el = document.querySelector('[data-screen-label="04 Reveal"] .score-pop .num');
+          if (!el) return false;
+          const t = (el.textContent || "").trim();
+          if (!/^\d{1,3}$/.test(t)) return false;
+          const n = parseInt(t, 10);
+          return Number.isInteger(n) && n >= 0 && n <= 100;
+        },
+        { timeout: SHORT_TIMEOUT_MS }
+      );
+      const scoreText = await page.evaluate(
+        () => (document.querySelector('[data-screen-label="04 Reveal"] .score-pop .num') || {}).textContent || ""
+      );
+      const scoreVal = parseInt(scoreText.trim(), 10);
+      if (!Number.isInteger(scoreVal) || scoreVal < 0 || scoreVal > 100)
+        throw new Error(`Phase4 score out of range for profile #${profileIdx}: "${scoreText.trim()}"`);
+      log(`PASS [profile #${profileIdx}] Phase4 score: ${scoreVal}`);
+
+      // Return to menu via topbar "Menu" button.
+      // app.jsx ~line 222: <button ... onClick={goNextProfile}><i class="ti ti-list"/> Menu</button>
+      // (only rendered when phase>0). goNextProfile -> setPhase(0); setProfileIdx(null).
+      await page.waitForFunction(
+        () => [...document.querySelectorAll("button")].some((b) => b.textContent.trim() === "Menu"),
+        { timeout: SHORT_TIMEOUT_MS }
+      );
+      await Promise.all([
+        page.waitForSelector('[data-screen-label="00 Menu"]', { timeout: POLL_TIMEOUT_MS }),
+        page.evaluate(() => {
+          const b = [...document.querySelectorAll("button")].find((x) => x.textContent.trim() === "Menu");
+          if (!b) throw new Error("Menu button not found");
+          b.click();
+        }),
+      ]);
+      log(`PASS [profile #${profileIdx}] returned to Phase0 menu`);
+    }
+
+    // ── Step 3: Assert leaderboard row for our user with games >= 5 ────────
+    // Each Phase4 mount commits a score via POST /api/scores (fire-and-forget
+    // fetch in app.jsx commitScore). Poll /api/leaderboard until our row
+    // appears. The new leaderboard shape (SCORING_VERSION="2") drops `total`
+    // in favor of `avg` (rounded mean score over distinct profiles) and `best`
+    // (max score); LEADERBOARD_MIN_GAMES=5 gates the list.
     let row = null;
     const lbStart = Date.now();
     while (Date.now() - lbStart < 15000) {
       const lb = await fetchJson(port, "/api/leaderboard");
       row = lb.find((r) => r && r.username === username) || null;
-      if (row && Number(row.games) >= 1) break;
+      if (row && Number(row.games) >= NUM_PROFILES) break;
       await new Promise((r) => setTimeout(r, 500));
     }
     if (!row) {
       throw new Error(`User "${username}" not found on /api/leaderboard after 15s`);
     }
     const games = Number(row.games);
-    const total = Number(row.total || 0);
-    if (games < 1) {
-      throw new Error(`Leaderboard row for "${username}" has games=${games}, expected >=1 (row=${JSON.stringify(row)})`);
+    if (games < NUM_PROFILES) {
+      throw new Error(`Leaderboard row for "${username}" has games=${games}, expected >=${NUM_PROFILES} (row=${JSON.stringify(row)})`);
     }
-    log(`PASS leaderboard: ${username} games=${games} total=${total}`);
+    if (!("avg" in row))
+      throw new Error(`Leaderboard row for "${username}" missing avg field (row=${JSON.stringify(row)})`);
+    const avg = Number(row.avg);
+    if (!Number.isFinite(avg))
+      throw new Error(`Leaderboard row for "${username}" has non-numeric avg="${row.avg}" (row=${JSON.stringify(row)})`);
+    log(`PASS leaderboard: ${username} games=${games} avg=${avg}`);
+
+    // Cross-check the same row via a fresh GET /api/leaderboard JSON fetch.
+    const lbRecheck = await fetchJson(port, "/api/leaderboard");
+    const rowRecheck = lbRecheck.find((r) => r && r.username === username) || null;
+    if (!rowRecheck)
+      throw new Error(`Cross-check: "${username}" missing from /api/leaderboard re-fetch`);
+    if (Number(rowRecheck.games) < NUM_PROFILES)
+      throw new Error(`Cross-check: games=${rowRecheck.games} < ${NUM_PROFILES}`);
+    if (!("avg" in rowRecheck) || !Number.isFinite(Number(rowRecheck.avg)))
+      throw new Error(`Cross-check: avg missing/non-numeric (row=${JSON.stringify(rowRecheck)})`);
+    log("PASS cross-checked /api/leaderboard JSON for", username);
 
     log("ALL STEPS PASSED");
     return 0;

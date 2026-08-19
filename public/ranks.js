@@ -1,12 +1,12 @@
-// Rank ladder for cumulative session score.
+// Rank ladder for session average score (0-100 per case).
 
 window.RANKS = [
-  { name: "Curious Observer",   min: 0,   icon: "eye" },
-  { name: "Application Reader", min: 30,  icon: "book-2" },
-  { name: "Junior Counselor",   min: 80,  icon: "school" },
-  { name: "Senior Counselor",   min: 150, icon: "stars" },
-  { name: "Dean of Admissions", min: 250, icon: "award" },
-  { name: "Admissions Oracle",  min: 400, icon: "crown" }
+  { name: "Curious Observer",   min: 0,  icon: "eye" },
+  { name: "Application Reader", min: 40, icon: "book-2" },
+  { name: "Junior Counselor",   min: 55, icon: "school" },
+  { name: "Senior Counselor",   min: 70, icon: "stars" },
+  { name: "Dean of Admissions", min: 82, icon: "award" },
+  { name: "Admissions Oracle",  min: 90, icon: "crown" }
 ];
 
 window.rankFor = function rankFor(total) {

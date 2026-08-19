@@ -23,6 +23,19 @@ function CalmLoading({ label = "Loading…", minHeight = "60vh" }) {
   );
 }
 
+function AvgRankChip({ rank, average }) {
+  return (
+    <div className="rank-chip" title={`${rank.current.name} · ${average} avg`}>
+      <span className="rank-chip__icon">
+        <i className={`ti ti-${rank.current.icon}`} />
+      </span>
+      <span className="rank-chip__name">{rank.current.name}</span>
+      <span className="rank-chip__divider">·</span>
+      <span className="num rank-chip__points">{average} avg</span>
+    </div>
+  );
+}
+
 function Phase0Menu({ profiles, onSelectProfile, scoresByProfile }) {
   const completed = profiles.filter(profile => scoresByProfile[profile.id] !== undefined).length;
   return (
@@ -144,7 +157,9 @@ function App() {
   }, [auth]);
 
   const totalPoints = Object.values(scoresByProfile).reduce((a, b) => a + b, 0);
-  const rank = window.rankFor(totalPoints);
+  const cases = Object.keys(scoresByProfile).length;
+  const average = cases ? Math.round(totalPoints / cases) : 0;
+  const rank = window.rankFor(average);
 
   function handleLogin(username, token, scores) {
     setAuth({ username, token });
@@ -246,7 +261,7 @@ function App() {
             <button className="btn-ghost" onClick={() => setShowSubmission(false)} aria-label="Back to applicant menu">
               <i className="ti ti-arrow-left" aria-hidden="true" /> Game
             </button>
-            <RankChip rank={rank} totalPoints={totalPoints} />
+            <AvgRankChip rank={rank} average={average} />
             <button className="btn-ghost" onClick={handleLogout} aria-label="Log out">
               <i className="ti ti-logout" aria-hidden="true" /> Log out
             </button>
@@ -277,7 +292,7 @@ function App() {
             </button>
           </div>
         </header>
-        <LeaderboardScreen username={auth.username} totalPoints={totalPoints} rank={rank} />
+        <LeaderboardScreen username={auth.username} average={average} rank={rank} />
       </div>
     );
   }
@@ -308,7 +323,7 @@ function App() {
               </button>
             </>
           )}
-          <RankChip rank={rank} totalPoints={totalPoints} />
+          <AvgRankChip rank={rank} average={average} />
           <button className="btn-ghost" onClick={handleLogout} aria-label="Log out">
             <i className="ti ti-logout" aria-hidden="true" /> Log out
           </button>
@@ -351,7 +366,7 @@ function App() {
         <Phase4Results
           profile={fullProfile || profile}
           universityTierPick={universityTierPick} lacTierPick={lacTierPick} noLacClaim={noLacClaim}
-          schoolSelections={schoolSelections} totalPoints={totalPoints} rank={rank}
+          schoolSelections={schoolSelections} average={average} rank={rank}
           onCommitScore={commitScore} onTryAgain={resetForProfile}
           onNext={goNextProfile} hasNext={profileIdx + 1 < profiles.length}
         />
@@ -360,30 +375,15 @@ function App() {
   );
 }
 
-function LeaderboardScreen({ username, totalPoints, rank }) {
+function LeaderboardScreen({ username, average, rank }) {
   const [rows, setRows] = React.useState(null);
-  const [stats, setStats] = React.useState(null);
 
   React.useEffect(() => {
-    Promise.all([
-      fetch(`${API_BASE}/api/leaderboard`).then(r => r.json()),
-      fetch(`${API_BASE}/api/stats`).then(r => r.json()),
-    ]).then(([lb, st]) => { setRows(lb); setStats(st); }).catch(console.error);
+    fetch(`${API_BASE}/api/leaderboard`)
+      .then(r => r.json())
+      .then(setRows)
+      .catch(console.error);
   }, []);
-
-  const RANK_NAMES = [
-    { name: "Curious Observer", min: 0 },
-    { name: "Application Reader", min: 30 },
-    { name: "Junior Counselor", min: 80 },
-    { name: "Senior Counselor", min: 150 },
-    { name: "Dean of Admissions", min: 250 },
-    { name: "Admissions Oracle", min: 400 },
-  ];
-  function rankTitle(pts) {
-    let t = RANK_NAMES[0].name;
-    for (const r of RANK_NAMES) if (pts >= r.min) t = r.name;
-    return t;
-  }
 
   return (
     <main className="fade-in" style={{ maxWidth: 640, margin: "0 auto" }}>
@@ -391,21 +391,9 @@ function LeaderboardScreen({ username, totalPoints, rank }) {
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "var(--sp-4)" }}>
           <div className="stack" style={{ gap: "var(--sp-1)" }}>
             <span className="label">Logged in as <span className="accent-text">{username}</span></span>
-            <span className="num" style={{ fontSize: "var(--fs-h2)", fontWeight: 700, lineHeight: 1 }}>{totalPoints} pts</span>
-            <span className="muted">{rankTitle(totalPoints)}</span>
+            <span className="num" style={{ fontSize: "var(--fs-h2)", fontWeight: 700, lineHeight: 1 }}>{average} avg</span>
+            <span className="muted">{rank.current.name}</span>
           </div>
-          {stats && (
-            <div className="row" style={{ gap: "var(--sp-5)" }}>
-              <div className="metric" style={{ alignItems: "flex-end" }}>
-                <span className="v">{stats.profileCount}</span>
-                <span className="k">cases</span>
-              </div>
-              <div className="metric" style={{ alignItems: "flex-end" }}>
-                <span className="v">{stats.uniquePlayers}</span>
-                <span className="k">players</span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -414,6 +402,7 @@ function LeaderboardScreen({ username, totalPoints, rank }) {
           <span className="eyebrow">Standings</span>
           <h2>Global leaderboard</h2>
         </div>
+        <span className="muted" style={{ fontSize: "var(--fs-sm)" }}>≥ 5 cases to qualify</span>
       </div>
 
       {!rows && <CalmLoading label="Loading standings…" minHeight="20vh" />}
@@ -425,6 +414,13 @@ function LeaderboardScreen({ username, totalPoints, rank }) {
       )}
       {rows && rows.length > 0 && (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+          <div className="row" style={{ padding: "var(--sp-2) var(--sp-5)", borderBottom: "1px solid var(--border-1)", flexWrap: "nowrap", gap: "var(--sp-3)", color: "var(--text-tertiary)", fontSize: "var(--fs-xs)" }}>
+            <span style={{ minWidth: 30, textAlign: "center" }}>Rank</span>
+            <span className="grow">Player</span>
+            <span>Avg</span>
+            <span>Cases</span>
+            <span>Best</span>
+          </div>
           {rows.map((row, i) => {
             const isYou = row.username === username;
             const top3 = i < 3;
@@ -451,8 +447,9 @@ function LeaderboardScreen({ username, totalPoints, rank }) {
                   {row.username}
                   {isYou && <span className="chip" style={{ marginLeft: "var(--sp-2)" }}>you</span>}
                 </span>
-                <span className="muted" style={{ fontSize: "var(--fs-sm)" }}>{row.games} cases</span>
-                <span className="num" style={{ fontWeight: 600 }}>{row.total} pts</span>
+                <span className="num" style={{ fontWeight: 600 }}>{row.avg} avg</span>
+                <span className="muted" style={{ fontSize: "var(--fs-sm)" }}>{row.games}</span>
+                <span className="muted" style={{ fontSize: "var(--fs-sm)" }}>{row.best}</span>
               </div>
             );
           })}

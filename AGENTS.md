@@ -28,11 +28,11 @@
 
 ## Code Conventions & Gotchas
 - **Defensive UI Rendering**: When modifying `public/phase*.jsx` components, **ALWAYS use optional chaining (`?.`)** and fallback defaults (`|| {}`, `|| []`) when accessing profile data (e.g., `test_scores`, `academic_profile`, `extracurriculars`). The LLM scraper is imperfect; missing data must render empty states, not crash the React tree. Hardening is already applied to `phase1-profile.jsx`, `phase2-tier.jsx`, `phase4-results.jsx`.
-- **Scoring Logic (`phase4-results.jsx`)**:
-  - `+10` for correct school, `-2` for incorrect school *(only if the tier band was a hit)*.
-  - `+10` for correct Uni tier, `+10` for correct LAC tier.
-  - `-5` per incorrect tier band.
-  - "No LAC Admit" claim explicitly scored (`+10` if correct, `-5` if wrong, waives standard LAC penalties).
+- **Scoring Logic (`public/scoring.js` + `phase4-results.jsx`)**: every case scores 0–100, never negative.
+  - School selection: up to **70** — Jaccard overlap `|selected ∩ admitted| / |selected ∪ admitted|` over the visible schools.
+  - University tier: up to **15** — distance credit (correct 15, off-by-one 9, off-by-two 5, else 0).
+  - LAC tier: up to **15** — same distance ladder; the "No LAC Admit" claim scores the full 15 when correct and 0 when wrong.
+  - `SCORING_VERSION = "2"` (see server.js): `/api/scores` validates 0..100; `/api/leaderboard` returns `{username, games, avg, best}` ordered by `avg` with a `LEADERBOARD_MIN_GAMES = 5` floor.
 - **API Fetching**: Frontend `fetch` calls in `public/app.jsx` must point explicitly to `/api/*` endpoints (e.g., `/api/scores`, `/api/leaderboard`). A typo here now 404s with JSON instead of silently returning `index.html` — so a wrong path fails loudly rather than feeding the SPA HTML to `.json()` parsing.
 - **No inline profiles copy**: `public/data.js` was **removed**. Never reintroduce an inline/bundled profiles copy in the frontend; the only data path is `GET /api/profiles` backed by `data/profiles.jsonl`.
-- **e2e test uses the real DB**: `e2e_test.cjs` writes to the real `data/game.db` (no test fixture). It generates a unique username per run (`e2e_<timestamp>`) and asserts only that run's leaderboard row exists with `games >= 1`. **Never assert global user/score counts** in tests — the DB accumulates rows across runs and CI.
+- **e2e test uses the real DB**: `e2e_test.cjs` writes to the real `data/game.db` (no test fixture). It generates a unique username per run (`e2e_<timestamp>`) and asserts only that run's leaderboard row exists with `games >= 5`. **Never assert global user/score counts** in tests — the DB accumulates rows across runs and CI.

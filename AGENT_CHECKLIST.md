@@ -145,9 +145,9 @@ Drive a full playthrough on the account from 2.2/2.6. Keep the console/pageerror
 - **PASS**: `[data-screen-label="04 Reveal"]` present (`phase4-results.jsx:235`); `h2` text is `The verdict` (`phase4-results.jsx:241`).
 
 ### Check 3.10 — Phase 4: score + accuracy render
-- **Purpose**: the reveal shows an animated points number and accuracy percentage.
-- **Invocation**: `page.waitForSelector('[data-screen-label="04 Reveal"] .score-pop .num')` (`phase4-results.jsx:250-251`); `page.waitForFunction(() => { const t = (document.querySelector('[data-screen-label="04 Reveal"] .score-pop .num')||{}).textContent||''; return /^[+-]?\d+$/.test(t.trim()); })` (the `AnimatedNum` eases 0→target; wait for a stable integer — pattern from `e2e_test.cjs:275-285`). Then read the `Accuracy` `.score-pop` text (`phase4-results.jsx:259-260`).
-- **PASS**: "Points earned" `.score-pop .num` matches `/^[+-]?\d+$/`; "Accuracy" `.score-pop` text matches `/^\d+%$/`.
+- **Purpose**: the reveal shows the 0-100 case score and accuracy percentage.
+- **Invocation**: `page.waitForSelector('[data-screen-label="04 Reveal"] .score-pop .num')`; `page.waitForFunction(() => { const t = (document.querySelector('[data-screen-label="04 Reveal"] .score-pop .num')||{}).textContent||''; return /^\d{1,3}$/.test(t.trim()); })` (the `AnimatedNum` eases 0→target; wait for a stable 0-100 integer). Then read the `Accuracy` `.score-pop` text.
+- **PASS**: `.score-pop .num` matches `/^\d{1,3}$/` and parses to 0..100; `Accuracy` `.score-pop` text matches `/^\d+%$/`.
 
 ### Check 3.11 — Phase 4: tier results + school-by-school breakdown render
 - **Purpose**: the verdict shows tier-band results and per-school rows.
@@ -168,10 +168,10 @@ Drive a full playthrough on the account from 2.2/2.6. Keep the console/pageerror
 - **Invocation**: record the header rank chip's points text before reload; `page.reload({ waitUntil: 'domcontentloaded' })`; wait for `[data-screen-label="00 Menu"]` (the app re-hydrates from `localStorage` and re-validates via `/api/me`, `app.jsx:65-77`).
 - **PASS**: still on the menu (not bounced to auth); rank chip shows the same total points as before reload.
 
-### Check 4.3 — Leaderboard contains the run's user
-- **Purpose**: the committed score appears on the global leaderboard with a `you` tag.
-- **Invocation**: click the topbar `Leaderboard` button (`app.jsx:211-212`); wait for `h2` text `Global leaderboard` (`app.jsx:329`); `page.evaluate` over the leaderboard rows to find the row whose username equals the run's `ui_<timestamp>` (`app.jsx:334-355`).
-- **PASS**: a row exists with `username === <run user>`, a `games` count `>= 1`, a numeric `total`, and a `you` tag (`app.jsx:349`). Cross-check via `curl -s http://127.0.0.1:3005/api/leaderboard` (`server.js:202`) — the same row must appear in the JSON.
+### Check 4.3 — Leaderboard contains the run's user (after ≥5 cases)
+- **Purpose**: the committed scores appear on the global leaderboard with a `you` tag once the ≥5-case floor is met.
+- **Invocation**: after playing 5 distinct cases, click the topbar `Leaderboard` button; wait for `h2` text `Global leaderboard`; `page.evaluate` over the leaderboard rows to find the row whose username equals the run's `ui_<timestamp>`.
+- **PASS**: a row exists with `username === <run user>`, a `games` count `>= 5`, a numeric `avg`, a numeric `best`, and a `you` tag. Cross-check via `curl -s http://127.0.0.1:3005/api/leaderboard` — the same row must appear in the JSON.
 
 ---
 
