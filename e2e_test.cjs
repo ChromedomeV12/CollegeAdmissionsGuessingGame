@@ -96,9 +96,6 @@ async function main() {
     env: {
       ...process.env,
       PORT: String(port),
-      REDDIT_CLIENT_ID: "",
-      REDDIT_CLIENT_SECRET: "",
-      REDDIT_REDIRECT_URI: "",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -147,45 +144,117 @@ async function main() {
     await page.goto(base, { waitUntil: "domcontentloaded" });
     log("PASS page loaded", base);
 
-    // ── Step 1: Register ────────────────────────────────────────────────────
-    // AuthScreen (public/auth.jsx). Starts in "login" mode. Switch to register
-    // via the toggle button whose exact text is "Create account". In login mode
-    // the submit button reads "Log in", so the only button with exact text
-    // "Create account" is the toggle (auth.jsx ~line 100).
-    await page.waitForSelector('input[placeholder="your_username"]', { timeout: POLL_TIMEOUT_MS });
-    await page.evaluate(() => {
-      const btns = [...document.querySelectorAll("button")];
-      const t = btns.find((b) => b.textContent.trim() === "Create account");
-      if (!t) throw new Error("Create account toggle not found");
-      t.click();
-    });
-    log("PASS switched to register mode");
+    async function clickButton(label, exact = true) {
+      await page.waitForFunction(
+        (wanted, exactMatch) => [...document.querySelectorAll("button")].some((button) => {
+          const text = (button.textContent || "").trim();
+          return exactMatch ? text === wanted : text.includes(wanted);
+        }),
+        { timeout: SHORT_TIMEOUT_MS },
+        label,
+        exact,
+      );
+      await page.evaluate((wanted, exactMatch) => {
+        const button = [...document.querySelectorAll("button")].find((candidate) => {
+          const text = (candidate.textContent || "").trim();
+          return exactMatch ? text === wanted : text.includes(wanted);
+        });
+        if (!button) throw new Error(`Button "${wanted}" not found`);
+        button.click();
+      }, label, exact);
+    }
 
-    // Confirm-password field only exists in register mode; use it as the gate.
+    async function startGuessing() {
+      await clickButton("Start guessing");
+      await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: POLL_TIMEOUT_MS });
+    }
+
+    async function selectNoAdmitClaims() {
+      const claimLabels = [
+        "Applicant was not admitted to any T50 University",
+        "Applicant was not admitted to any T20 LAC",
+      ];
+      for (const label of claimLabels) {
+        await page.waitForFunction(
+          (wanted) => [...document.querySelectorAll('[data-screen-label="02 Tier"] [role="button"]')]
+            .some((claim) => (claim.textContent || "").includes(wanted)),
+          { timeout: SHORT_TIMEOUT_MS },
+          label,
+        );
+        await page.evaluate((wanted) => {
+          const claim = [...document.querySelectorAll('[data-screen-label="02 Tier"] [role="button"]')]
+            .find((candidate) => (candidate.textContent || "").includes(wanted));
+          if (!claim) throw new Error(`Claim "${wanted}" not found`);
+          if (claim.getAttribute("aria-pressed") !== "true") claim.click();
+        }, label);
+        await page.waitForFunction(
+          (wanted) => [...document.querySelectorAll('[data-screen-label="02 Tier"] [role="button"]')]
+            .some((claim) => (claim.textContent || "").includes(wanted) && claim.getAttribute("aria-pressed") === "true"),
+          { timeout: SHORT_TIMEOUT_MS },
+          label,
+        );
+      }
+    }
+
+    async function revealWithNoAdmitClaims() {
+      await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: POLL_TIMEOUT_MS });
+      await selectNoAdmitClaims();
+      await page.waitForFunction(
+        () => [...document.querySelectorAll("button")]
+          .some((button) => (button.textContent || "").includes("Lock in predictions") && !button.disabled),
+        { timeout: SHORT_TIMEOUT_MS },
+      );
+      await Promise.all([
+        page.waitForSelector('[data-screen-label="03 Schools"]', { timeout: POLL_TIMEOUT_MS }),
+        clickButton("Lock in predictions"),
+      ]);
+      await Promise.all([
+        page.waitForSelector('[data-screen-label="04 Reveal"]', { timeout: POLL_TIMEOUT_MS }),
+        clickButton("Reveal results"),
+      ]);
+    }
+
+    async function readCaseScore(profileIdx) {
+      await page.waitForSelector('[data-screen-label="04 Reveal"] .score-pop .num', { timeout: SHORT_TIMEOUT_MS });
+      await page.waitForFunction(
+        () => {
+          const value = (document.querySelector('[data-screen-label="04 Reveal"] .score-pop .num')?.textContent || "").trim();
+          if (!/^\d{1,3}$/.test(value)) return false;
+          const score = Number(value);
+          return Number.isInteger(score) && score >= 0 && score <= 100;
+        },
+        { timeout: SHORT_TIMEOUT_MS },
+      );
+      const score = await page.$eval(
+        '[data-screen-label="04 Reveal"] .score-pop .num',
+        (element) => Number((element.textContent || "").trim()),
+      );
+      if (!Number.isInteger(score) || score < 0 || score > 100) {
+        throw new Error(`Reveal score out of range for profile #${profileIdx}: ${score}`);
+      }
+      return score;
+    }
+
+    // ── Step 1: Register -> signed-in Home -> Play -> applicant menu ───────
+    await page.waitForSelector('input[placeholder="your_username"]', { timeout: POLL_TIMEOUT_MS });
+    await clickButton("Create account");
     await page.waitForSelector('input[placeholder="Same password again"]', { timeout: SHORT_TIMEOUT_MS });
 
     await page.type('input[placeholder="your_username"]', username);
-    // Two password inputs now exist: [0]=password, [1]=confirm.
     const pwdInputs = await page.$$('input[type="password"]');
-    if (pwdInputs.length < 2) throw new Error("Expected 2 password inputs in register mode, got " + pwdInputs.length);
+    if (pwdInputs.length < 2) throw new Error("Expected two password inputs in register mode");
     await pwdInputs[0].type(password);
     await pwdInputs[1].type(password);
-    log("PASS filled register form for", username);
 
-    // Submit via the .btn-primary button (auth.jsx ~line 157-164). In register
-    // mode its label is "Create account"; selecting by class avoids colliding
-    // with the toggle button which has no class.
     const submitBtn = await page.$("button.btn-primary");
-    if (!submitBtn) throw new Error("Submit button.btn-primary not found");
+    if (!submitBtn) throw new Error("Register submit button not found");
     await Promise.all([
-      // After successful register, onLogin -> auth set -> profiles fetched ->
-      // Phase0Menu renders with data-screen-label="00 Menu".
-      page.waitForSelector('[data-screen-label="00 Menu"]', { timeout: POLL_TIMEOUT_MS }),
+      page.waitForSelector('[data-screen-label="Home"]', { timeout: POLL_TIMEOUT_MS }),
       submitBtn.click(),
     ]);
-    log("PASS registered + reached Phase0 menu");
+    log("PASS registered and opened signed-in Home");
 
-    // ── Step 1a: Theme toggle + persistence ───────────────────────────────
+    // Theme persistence remains covered on the new signed-in landing screen.
     const themeBefore = await page.evaluate(() => document.documentElement.dataset.theme || "dark");
     const expectedTheme = themeBefore === "light" ? "dark" : "light";
     await page.click('[aria-label="Toggle theme"]');
@@ -195,7 +264,7 @@ async function main() {
       expectedTheme,
     );
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.waitForSelector('[data-screen-label="00 Menu"]', { timeout: POLL_TIMEOUT_MS });
+    await page.waitForSelector('[data-screen-label="Home"]', { timeout: POLL_TIMEOUT_MS });
     const persistedTheme = await page.evaluate(() => ({
       attr: document.documentElement.dataset.theme,
       stored: localStorage.getItem("ao_theme"),
@@ -203,261 +272,220 @@ async function main() {
     if (persistedTheme.attr !== expectedTheme || persistedTheme.stored !== expectedTheme) {
       throw new Error(`Theme did not persist after reload: ${JSON.stringify(persistedTheme)}`);
     }
-    log(`PASS theme toggled ${themeBefore} -> ${expectedTheme} and persisted after reload`);
+    log(`PASS theme toggled ${themeBefore} -> ${expectedTheme} and persisted on Home`);
 
-    // ── Step 1b: Edit-code fallback submission flow ───────────────────────
-    // Server is spawned with REDDIT_* envs forced empty, so the submission
-    // center runs in fallback mode: a local ORACLE-XXXXXX proof code is issued
-    // with no Reddit network call. We drive the issue flow but stop before
-    // confirm (which would hit real Reddit).
-    await page.evaluate(() => {
-      const button = [...document.querySelectorAll("button")].find((item) => item.textContent.includes("Submit a post"));
-      if (!button) throw new Error("Submit a post navigation button not found");
-      button.click();
-    });
-    await page.waitForSelector('[data-screen-label="Submission Center"]', { timeout: POLL_TIMEOUT_MS });
-    await page.waitForSelector('#reddit-post-url', { timeout: SHORT_TIMEOUT_MS });
-    // (i) Fallback banner is visible and mentions the edit-code path.
-    await page.waitForFunction(
-      () => {
-        const el = document.querySelector('[data-screen-label="Submission Center"]');
-        return el && /edit-code/i.test(el.textContent);
-      },
-      { timeout: SHORT_TIMEOUT_MS }
-    );
-    log("PASS fallback banner visible (edit-code)");
+    await clickButton("Play");
+    await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: POLL_TIMEOUT_MS });
+    log("PASS Home Play action opened the applicant menu");
 
-    // Track any outbound Reddit requests so we can prove the proof code is
-    // generated locally, not via a Reddit round-trip.
-    const redditRequests = [];
-    page.on("request", (req) => {
-      const u = req.url();
-      if (/(?:^|\.)reddit\.com|redd\.it/i.test(u)) redditRequests.push(u);
-    });
-
-    // (ii) Type a canonical Reddit URL and toggle consent → verify enables.
-    // Post ID must be unique per run: reddit_post_id is globally UNIQUE and
-    // cross-user duplicates are correctly rejected with a 409, so a fixed
-    // fixture ID would fail every run after the first.
-    const fixturePostId = 'e2e' + Math.random().toString(36).slice(2, 8);
-    await page.type('#reddit-post-url', `https://www.reddit.com/r/collegeresults/comments/${fixturePostId}/a_case/`);
-    await page.click('.consent-card input');
-    await page.waitForFunction(
-      () => {
-        const btn = document.querySelector('[data-screen-label="Submission Center"] button[type="submit"]');
-        return btn && !btn.disabled;
-      },
-      { timeout: SHORT_TIMEOUT_MS }
-    );
-    log("PASS verify button enabled after URL + consent");
-
-    // (iii) Click verify → local proof code rendered, no Reddit network call.
-    await Promise.all([
-      page.waitForSelector('[data-proof-code]', { timeout: POLL_TIMEOUT_MS }),
-      page.click('[data-screen-label="Submission Center"] button[type="submit"]'),
-    ]);
-    const proofCode = await page.$eval('[data-proof-code]', (el) => (el.textContent || "").trim());
-    if (!/^ORACLE-[A-Z0-9]{6}$/.test(proofCode))
-      throw new Error(`Expected local proof code matching /^ORACLE-[A-Z0-9]{6}$/, got "${proofCode}"`);
-    if (redditRequests.length > 0)
-      throw new Error(`Fallback issue made Reddit network calls (no key configured): ${redditRequests.join(", ")}`);
-    log("PASS local proof code issued:", proofCode, "(no Reddit network call)");
-
-    // (iv) Do NOT click confirm — that would fetch the real Reddit post.
-    log("PASS stopped before confirm (would hit real Reddit)");
-
-    await page.evaluate(() => {
-      const button = [...document.querySelectorAll("button")].find((item) => item.textContent.trim() === "Game");
-      if (!button) throw new Error("Game navigation button not found");
-      button.click();
-    });
-    await page.waitForSelector('[data-screen-label="00 Menu"]', { timeout: POLL_TIMEOUT_MS });
-    log("PASS returned to game from submission center");
-
-    // ── Step 2: Drive 5 DISTINCT profiles through the full game flow ───────
-    // Loop menu -> profile viewer (01) -> tier (02) -> schools (03) -> reveal
-    // (04) -> back to menu over profile card indices 0..4. Each completed
-    // game commits a score via POST /api/scores; after 5 distinct profiles the
-    // user qualifies for the leaderboard (LEADERBOARD_MIN_GAMES=5).
+    // ── Step 2: Finalize five distinct scored cases through the one retry ──
     const NUM_PROFILES = 5;
+    if (profiles.length < NUM_PROFILES) {
+      throw new Error(`Need at least ${NUM_PROFILES} distinct profiles, found ${profiles.length}`);
+    }
+    const playedProfileIds = new Set();
+
     for (let profileIdx = 0; profileIdx < NUM_PROFILES; profileIdx++) {
-      // Select the profileIdx-th profile card in Phase0Menu. app.jsx Phase0Menu
-      // renders each profile as div.card.school-card with onClick; index into
-      // the live NodeList so each loop iteration picks a distinct profile.
       await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: SHORT_TIMEOUT_MS });
-      await page.evaluate((idx) => {
+      const selectedProfileId = await page.evaluate((idx) => {
         const cards = document.querySelectorAll('[data-screen-label="00 Menu"] .school-card');
         const card = cards[idx];
-        if (!card) throw new Error(`Profile card ${idx} not found in menu (have ${cards.length})`);
+        if (!card) throw new Error(`Profile card ${idx} not found; menu has ${cards.length}`);
+        const id = (card.querySelector(".name")?.textContent || "").trim();
         card.click();
+        return id;
       }, profileIdx);
-      // Selecting a profile calls resetForProfile() -> setPhase(1) -> Phase1Profile.
+      if (!selectedProfileId || playedProfileIds.has(selectedProfileId)) {
+        throw new Error(`Profile #${profileIdx} was not distinct: "${selectedProfileId}"`);
+      }
+      playedProfileIds.add(selectedProfileId);
       await page.waitForSelector('[data-screen-label="01 Profile"]', { timeout: POLL_TIMEOUT_MS });
-      log(`PASS selected profile #${profileIdx}, reached Phase1 viewer`);
 
-      // Phase1 -> Phase2 via "Start guessing" button.
-      // phase1-profile.jsx ~line 30: <Btn onClick={onStart} iconRight="arrow-right">Start guessing</Btn>
+      if (profileIdx === 0) {
+        const correctChoicesPremature = await page.evaluate(() =>
+          [...document.querySelectorAll('[data-screen-label="01 Profile"] button')]
+            .some((button) => (button.textContent || "").trim() === "Correct choices")
+        );
+        if (correctChoicesPremature) throw new Error("Correct choices were visible before the case was finalized");
+      }
+
+      await startGuessing();
+      await revealWithNoAdmitClaims();
+
+      // First reveal exposes only aggregate score cards and the five-second
+      // retry action. Outcome details must remain hidden during this window.
+      const firstScore = await readCaseScore(profileIdx);
       await page.waitForFunction(
-        () => [...document.querySelectorAll("button")].some((b) => b.textContent.includes("Start guessing")),
-        { timeout: SHORT_TIMEOUT_MS }
+        () => [...document.querySelectorAll('[data-screen-label="04 Reveal"] button')]
+          .some((button) => /^Retry case \([1-5]s\)$/.test((button.textContent || "").trim())),
+        { timeout: SHORT_TIMEOUT_MS },
       );
-      await page.evaluate(() => {
-        const b = [...document.querySelectorAll("button")].find((x) => x.textContent.includes("Start guessing"));
-        if (!b) throw new Error("Start guessing button not found");
-        b.click();
+      const firstRevealGate = await page.evaluate(() => {
+        const screen = document.querySelector('[data-screen-label="04 Reveal"]');
+        const text = screen?.textContent || "";
+        return {
+          hasAggregates: ["Case score", "Accuracy", "Time"].every((label) => text.includes(label)),
+          hasDetails: text.includes("Tier results") || text.includes("School-by-school") || !!screen?.querySelector(".final-banner"),
+          retryText: [...(screen?.querySelectorAll("button") || [])]
+            .map((button) => (button.textContent || "").trim())
+            .find((label) => label.startsWith("Retry case (")) || "",
+        };
       });
+      if (!firstRevealGate.hasAggregates || firstRevealGate.hasDetails || !/^Retry case \([1-5]s\)$/.test(firstRevealGate.retryText)) {
+        throw new Error(`First reveal gate failed for profile #${profileIdx}: ${JSON.stringify(firstRevealGate)}`);
+      }
+      log(`PASS [profile #${profileIdx}] first reveal aggregate-only, score=${firstScore}, ${firstRevealGate.retryText}`);
+
+      await clickButton("Retry case (", false);
       await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: POLL_TIMEOUT_MS });
-      log(`PASS [profile #${profileIdx}] advanced to Phase2 tier selection`);
+      await revealWithNoAdmitClaims();
 
-      // Phase2 — pick a University tier + no-LAC claim, then lock.
-      // phase2-tier.jsx: Panel A ("Panel A · University tier") holds TierPickCard
-      // <button>s for UNI_TIER_LIST = [HYPSM, T10, T15, T20, T30, T50]. Click the
-      // first one (HYPSM) to set universityTierPick.
-      await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: SHORT_TIMEOUT_MS });
-      await page.evaluate(() => {
-        const cards = [...document.querySelectorAll('[data-screen-label="02 Tier"] .card')];
-        const panelA = cards.find((c) => c.textContent.includes("Panel A"));
-        if (!panelA) throw new Error("Panel A (University tier) not found");
-        const btn = panelA.querySelector("button");
-        if (!btn) throw new Error("No university tier button in Panel A");
-        btn.click();
-      });
-      log(`PASS [profile #${profileIdx}] picked first university tier (HYPSM)`);
-
-      // No-LAC claim: phase2-tier.jsx ~line 93-110, a div[role="button"] whose
-      // text contains "Applicant was not admitted to any LAC". Clicking toggles
-      // noLacClaim=true and clears lacTierPick.
-      await page.waitForFunction(
-        () => [...document.querySelectorAll('[data-screen-label="02 Tier"] div[role="button"]')]
-          .some((d) => d.textContent.includes("Applicant was not admitted to any LAC")),
-        { timeout: SHORT_TIMEOUT_MS }
-      );
-      await page.evaluate(() => {
-        const claim = [...document.querySelectorAll('[data-screen-label="02 Tier"] div[role="button"]')]
-          .find((d) => d.textContent.includes("Applicant was not admitted to any LAC"));
-        if (!claim) throw new Error("No-LAC claim control not found");
-        claim.click();
-      });
-      log(`PASS [profile #${profileIdx}] toggled no-LAC claim`);
-
-      // Lock button: <Btn onClick={onLock} iconRight="lock">Lock in predictions</Btn>
-      // disabled until universityTierPick && (lacTierPick || noLacClaim). Wait for
-      // it to be enabled, then click. onLock fetches /api/profiles/:id then
-      // setPhase(3).
-      await page.waitForFunction(
-        () => [...document.querySelectorAll("button")].some(
-          (b) => b.textContent.includes("Lock in predictions") && !b.disabled
-        ),
-        { timeout: SHORT_TIMEOUT_MS }
-      );
-      await Promise.all([
-        page.waitForSelector('[data-screen-label="03 Schools"]', { timeout: POLL_TIMEOUT_MS }),
-        page.evaluate(() => {
-          const b = [...document.querySelectorAll("button")].find((x) => x.textContent.includes("Lock in predictions"));
-          if (!b) throw new Error("Lock in predictions button not found");
-          b.click();
-        }),
-      ]);
-      log(`PASS [profile #${profileIdx}] locked tiers, reached Phase3 school selection`);
-
-      // Phase3 -> Phase4 via "Reveal results" (no picks required).
-      // phase3-school.jsx ~line 230: <Btn onClick={onReveal} iconRight="sparkles">Reveal results</Btn>
-      // onReveal just setPhase(4); no disabled gate on school selections.
-      await page.waitForFunction(
-        () => [...document.querySelectorAll("button")].some((b) => b.textContent.includes("Reveal results")),
-        { timeout: SHORT_TIMEOUT_MS }
-      );
-      await Promise.all([
-        page.waitForSelector('[data-screen-label="04 Reveal"]', { timeout: POLL_TIMEOUT_MS }),
-        page.evaluate(() => {
-          const b = [...document.querySelectorAll("button")].find((x) => x.textContent.includes("Reveal results"));
-          if (!b) throw new Error("Reveal results button not found");
-          b.click();
-        }),
-      ]);
-      log(`PASS [profile #${profileIdx}] revealed results, reached Phase4`);
-
-      // ── Confirm Phase4 shows an integer score 0..100 in .score-pop .num ──
-      // phase4-results.jsx renders <div class="score-pop"><span class="num">
-      // (AnimatedNum) holding the per-case score (0-100) from SCORING.caseScore.
-      await page.waitForSelector('[data-screen-label="04 Reveal"] .score-pop .num', { timeout: SHORT_TIMEOUT_MS });
-      // AnimatedNum eases 0->target over 900ms; wait for a stable integer in
-      // the 0..100 range (1-3 digits, no sign).
+      // The retry is the final scoring attempt. Await the persisted lock and
+      // the resulting detailed verdict before navigating away.
       await page.waitForFunction(
         () => {
-          const el = document.querySelector('[data-screen-label="04 Reveal"] .score-pop .num');
-          if (!el) return false;
-          const t = (el.textContent || "").trim();
-          if (!/^\d{1,3}$/.test(t)) return false;
-          const n = parseInt(t, 10);
-          return Number.isInteger(n) && n >= 0 && n <= 100;
+          const screen = document.querySelector('[data-screen-label="04 Reveal"]');
+          const text = screen?.textContent || "";
+          return text.includes("Tier results") && !!screen?.querySelector(".final-banner");
         },
-        { timeout: SHORT_TIMEOUT_MS }
+        { timeout: POLL_TIMEOUT_MS },
       );
-      const scoreText = await page.evaluate(
-        () => (document.querySelector('[data-screen-label="04 Reveal"] .score-pop .num') || {}).textContent || ""
+      const finalScore = await readCaseScore(profileIdx);
+      const retryStillVisible = await page.evaluate(() =>
+        [...document.querySelectorAll('[data-screen-label="04 Reveal"] button')]
+          .some((button) => (button.textContent || "").includes("Retry case ("))
       );
-      const scoreVal = parseInt(scoreText.trim(), 10);
-      if (!Number.isInteger(scoreVal) || scoreVal < 0 || scoreVal > 100)
-        throw new Error(`Phase4 score out of range for profile #${profileIdx}: "${scoreText.trim()}"`);
-      log(`PASS [profile #${profileIdx}] Phase4 score: ${scoreVal}`);
+      if (retryStillVisible) throw new Error(`Retry remained available after profile #${profileIdx} finalization`);
+      log(`PASS [profile #${profileIdx}] retry finalized with full details, score=${finalScore}`);
 
-      // Return to menu via topbar "Menu" button.
-      // app.jsx ~line 222: <button ... onClick={goNextProfile}><i class="ti ti-list"/> Menu</button>
-      // (only rendered when phase>0). goNextProfile -> setPhase(0); setProfileIdx(null).
-      await page.waitForFunction(
-        () => [...document.querySelectorAll("button")].some((b) => b.textContent.trim() === "Menu"),
-        { timeout: SHORT_TIMEOUT_MS }
-      );
-      await Promise.all([
-        page.waitForSelector('[data-screen-label="00 Menu"]', { timeout: POLL_TIMEOUT_MS }),
-        page.evaluate(() => {
-          const b = [...document.querySelectorAll("button")].find((x) => x.textContent.trim() === "Menu");
-          if (!b) throw new Error("Menu button not found");
-          b.click();
-        }),
-      ]);
-      log(`PASS [profile #${profileIdx}] returned to Phase0 menu`);
+      await clickButton("Menu");
+      await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: POLL_TIMEOUT_MS });
+
+      const practiceBadgeVisible = await page.evaluate((idx) => {
+        const card = document.querySelectorAll('[data-screen-label="00 Menu"] .school-card')[idx];
+        return !!card && [...card.querySelectorAll(".badge")]
+          .some((badge) => (badge.textContent || "").trim() === "Practice");
+      }, profileIdx);
+      if (!practiceBadgeVisible) throw new Error(`Finalized profile #${profileIdx} was not marked Practice in the menu`);
+
+      // Exercise one locked profile end-to-end as practice. Its profile shows
+      // Correct choices, and its reveal skips the scoring retry entirely.
+      if (profileIdx === 0) {
+        await page.evaluate((idx) => {
+          const card = document.querySelectorAll('[data-screen-label="00 Menu"] .school-card')[idx];
+          if (!card) throw new Error(`Practice card ${idx} not found`);
+          card.click();
+        }, profileIdx);
+        await page.waitForSelector('[data-screen-label="01 Profile"]', { timeout: POLL_TIMEOUT_MS });
+        await page.waitForFunction(
+          () => [...document.querySelectorAll('[data-screen-label="01 Profile"] button')]
+            .some((button) => (button.textContent || "").trim() === "Correct choices"),
+          { timeout: POLL_TIMEOUT_MS },
+        );
+        await clickButton("Correct choices");
+        await page.waitForFunction(
+          () => (document.querySelector('[data-screen-label="01 Profile"]')?.textContent || "")
+            .includes("This file is finalized and no longer affects your score."),
+          { timeout: SHORT_TIMEOUT_MS },
+        );
+
+        await startGuessing();
+        await revealWithNoAdmitClaims();
+        await page.waitForFunction(
+          () => {
+            const screen = document.querySelector('[data-screen-label="04 Reveal"]');
+            return !!screen?.querySelector(".final-banner") && (screen.textContent || "").includes("Tier results");
+          },
+          { timeout: POLL_TIMEOUT_MS },
+        );
+        const practiceHasRetry = await page.evaluate(() =>
+          [...document.querySelectorAll('[data-screen-label="04 Reveal"] button')]
+            .some((button) => (button.textContent || "").includes("Retry case ("))
+        );
+        if (practiceHasRetry) throw new Error("Practice reveal incorrectly offered a scoring retry");
+        log("PASS locked profile opened practice with Correct choices and full no-retry reveal");
+
+        await clickButton("Menu");
+        await page.waitForSelector('[data-screen-label="00 Menu"]', { timeout: POLL_TIMEOUT_MS });
+      }
     }
 
-    // ── Step 3: Assert leaderboard row for our user with games >= 5 ────────
-    // Each Phase4 mount commits a score via POST /api/scores (fire-and-forget
-    // fetch in app.jsx commitScore). Poll /api/leaderboard until our row
-    // appears. The new leaderboard shape (SCORING_VERSION="2") drops `total`
-    // in favor of `avg` (rounded mean score over distinct profiles) and `best`
-    // (max score); LEADERBOARD_MIN_GAMES=5 gates the list.
+    if (playedProfileIds.size !== NUM_PROFILES) {
+      throw new Error(`Expected ${NUM_PROFILES} distinct finalized cases, got ${playedProfileIds.size}`);
+    }
+
+    // ── Step 3: Global leaderboard UI has no season dependency ─────────────
+    await clickButton("Leaderboard");
+    await page.waitForFunction(
+      () => [...document.querySelectorAll("h2")]
+        .some((heading) => (heading.textContent || "").trim() === "Global leaderboard"),
+      { timeout: POLL_TIMEOUT_MS },
+    );
+    await page.waitForFunction(
+      (wanted) => [...document.querySelectorAll(".leaderboard-grid")]
+        .some((row) => (row.textContent || "").includes(wanted)),
+      { timeout: POLL_TIMEOUT_MS },
+      username,
+    );
+
+    const leaderboardUi = await page.evaluate((wanted) => {
+      const grids = [...document.querySelectorAll(".leaderboard-grid")];
+      const header = grids.find((grid) => (grid.textContent || "").includes("Rank") && (grid.textContent || "").includes("Player"));
+      const row = grids.find((grid) => [...grid.children]
+        .some((cell) => (cell.textContent || "").includes(wanted)));
+      const cells = row ? [...row.children].map((cell) => (cell.textContent || "").trim()) : [];
+      const bodyText = document.body.textContent || "";
+      return {
+        header: header ? [...header.children].map((cell) => (cell.textContent || "").trim()) : [],
+        row: cells,
+        hasYouTag: !!row && [...row.querySelectorAll(".chip")].some((chip) => (chip.textContent || "").trim() === "you"),
+        hasRivalry: bodyText.includes("Rivalry") && bodyText.includes("Head-to-head on shared cases"),
+        hasSeason: /\bseason\b/i.test(bodyText) || document.querySelectorAll("select").length > 0,
+      };
+    }, username);
+    if (leaderboardUi.header.join("|") !== "Rank|Player|Avg|Cases|Best") {
+      throw new Error(`Unexpected global leaderboard columns: ${JSON.stringify(leaderboardUi.header)}`);
+    }
+    if (leaderboardUi.row.length !== 5 || !leaderboardUi.hasYouTag) {
+      throw new Error(`Current user row missing or malformed: ${JSON.stringify(leaderboardUi)}`);
+    }
+    const uiAvg = Number.parseFloat(leaderboardUi.row[2]);
+    const uiGames = Number(leaderboardUi.row[3]);
+    const uiBest = Number(leaderboardUi.row[4]);
+    if (!Number.isFinite(uiAvg) || uiGames < NUM_PROFILES || !Number.isFinite(uiBest)) {
+      throw new Error(`Global avg/games/best invalid: ${JSON.stringify(leaderboardUi.row)}`);
+    }
+    if (!leaderboardUi.hasRivalry || leaderboardUi.hasSeason) {
+      throw new Error(`Leaderboard rivalry/season gate failed: ${JSON.stringify(leaderboardUi)}`);
+    }
+    log(`PASS global leaderboard UI: avg=${uiAvg}, games=${uiGames}, best=${uiBest}, rivalry visible, no seasons`);
+
+    // Preserve the API cross-check for this unique user after five distinct
+    // finalized cases, now including the global best field.
     let row = null;
     const lbStart = Date.now();
     while (Date.now() - lbStart < 15000) {
       const lb = await fetchJson(port, "/api/leaderboard");
-      row = lb.find((r) => r && r.username === username) || null;
+      row = lb.find((candidate) => candidate && candidate.username === username) || null;
       if (row && Number(row.games) >= NUM_PROFILES) break;
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
-    if (!row) {
-      throw new Error(`User "${username}" not found on /api/leaderboard after 15s`);
-    }
+    if (!row) throw new Error(`User "${username}" not found on /api/leaderboard after 15s`);
     const games = Number(row.games);
-    if (games < NUM_PROFILES) {
-      throw new Error(`Leaderboard row for "${username}" has games=${games}, expected >=${NUM_PROFILES} (row=${JSON.stringify(row)})`);
-    }
-    if (!("avg" in row))
-      throw new Error(`Leaderboard row for "${username}" missing avg field (row=${JSON.stringify(row)})`);
     const avg = Number(row.avg);
-    if (!Number.isFinite(avg))
-      throw new Error(`Leaderboard row for "${username}" has non-numeric avg="${row.avg}" (row=${JSON.stringify(row)})`);
-    log(`PASS leaderboard: ${username} games=${games} avg=${avg}`);
+    const best = Number(row.best);
+    if (games < NUM_PROFILES || !Number.isFinite(avg) || !Number.isFinite(best)) {
+      throw new Error(`Leaderboard avg/games/best invalid for "${username}": ${JSON.stringify(row)}`);
+    }
+    log(`PASS leaderboard API: ${username} games=${games} avg=${avg} best=${best}`);
 
-    // Cross-check the same row via a fresh GET /api/leaderboard JSON fetch.
     const lbRecheck = await fetchJson(port, "/api/leaderboard");
-    const rowRecheck = lbRecheck.find((r) => r && r.username === username) || null;
-    if (!rowRecheck)
-      throw new Error(`Cross-check: "${username}" missing from /api/leaderboard re-fetch`);
-    if (Number(rowRecheck.games) < NUM_PROFILES)
-      throw new Error(`Cross-check: games=${rowRecheck.games} < ${NUM_PROFILES}`);
-    if (!("avg" in rowRecheck) || !Number.isFinite(Number(rowRecheck.avg)))
-      throw new Error(`Cross-check: avg missing/non-numeric (row=${JSON.stringify(rowRecheck)})`);
-    log("PASS cross-checked /api/leaderboard JSON for", username);
+    const rowRecheck = lbRecheck.find((candidate) => candidate && candidate.username === username) || null;
+    if (!rowRecheck) throw new Error(`Cross-check: "${username}" missing from /api/leaderboard re-fetch`);
+    if (Number(rowRecheck.games) < NUM_PROFILES || !Number.isFinite(Number(rowRecheck.avg)) || !Number.isFinite(Number(rowRecheck.best))) {
+      throw new Error(`Cross-check: avg/games/best invalid (row=${JSON.stringify(rowRecheck)})`);
+    }
+    log("PASS cross-checked global /api/leaderboard JSON for", username);
 
     log("ALL STEPS PASSED");
     return 0;

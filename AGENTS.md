@@ -1,12 +1,12 @@
 # Admissions Oracle - Agent Instructions
 
 ## Architecture & Data Flow
-- **Frontend (`public/`)**: React Single-Page Application compiled in-browser via `@babel/standalone`. No build step. `styles-v2.css` is the semantic component stylesheet; Tailwind Play CDN has preflight disabled. `ambient-waves.js` renders a full-viewport Three.js sculpted-fold wallpaper (macOS-style layered relief) with one broad filled-SVG fallback; the old grid, particles and contour lines are gone.
-- **Backend (`server.js`)**: Express server serving static files from `public/` and a single `/api/*` mount. There are **no legacy non-API routes** — every `/register`, `/login`, `/me`, `/profiles` etc. lives under `/api/`.
+- **Frontend (`public/`)**: React SPA compiled in-browser via `@babel/standalone`; no build step. Signed-in users land on Home, then enter Profile → Tier → Schools → Reveal. `styles-v2.css` is authoritative semantic CSS; Tailwind Play CDN has preflight disabled. `ambient-waves.js` renders a full-viewport Three.js sculpted-fold wallpaper with a broad filled-SVG fallback.
+- **Backend (`server.js`)**: Express serves `public/` and one `/api/*` mount. There are no legacy non-API routes. Unknown `/api/*` paths return `404 {"error":"Not found"}`.
 - **Hybrid Storage**:
-  - **Static Content (`data/profiles.jsonl`)**: Read-only to the server. Loaded into memory on startup and reloaded on each `/api/profiles` request. The **single source of truth** for profile data — served to the frontend only via `GET /api/profiles` (and `/api/profiles/:id` for full records).
-  - **Dynamic State (`data/game.db`)**: SQLite (`better-sqlite3`, WAL mode) storing user accounts, scores, consent receipts, and private Reddit submission records.
-- **API surface**: existing auth/game routes plus `/api/submissions/config`, `/api/submissions`, `/api/submissions/reddit/callback`, and `/api/submissions/:id`. Unknown `/api/*` paths return `404` JSON (`{ "error": "Not found" }`).
+  - **Static Content (`data/profiles.jsonl`)**: read-only to the server, reloaded on each `/api/profiles` request, and the only profile source. List responses strip outcomes/source; `/api/profiles/:id` returns the full public case only after the client locks predictions or opens permanent practice.
+  - **Dynamic State (`data/game.db`)**: SQLite (`better-sqlite3`, WAL) storing accounts, per-profile best scores, permanent practice locks, rivals, consent receipts, and private Reddit submission records.
+- **Game API**: auth/profile/score/stats routes plus `/api/locks`, `/api/rivals`, `/api/duel/:username`, and the seasonless global `/api/leaderboard`. Submission routes are maintainer-only and disabled unless `SUBMISSIONS_ENABLED=true`; `/api/submissions/config` remains readable to authenticated callers and reports the flag.
 
 ## Development Commands
 - **Run Server**: `npm run dev` (Express via `node --watch`).
@@ -15,26 +15,25 @@
 - **Approve**: `npm run approve` (see pipeline below).
 
 ## Consent-import pipeline
-*IMPORTANT: bulk subreddit scraping and arbitrary URL scraping are disabled. New cases enter only through consent + ownership proof.*
-1. **Submit**: a signed-in user submits one Reddit post URL and accepts versioned consent (`POST /api/submissions`, auth + rate-limited).
-2. **Verify ownership** — one of two paths, auto-selected by config:
-   - **OAuth** (when `REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET`/`REDDIT_REDIRECT_URI` are set): user completes a temporary `identity read` Reddit grant; `server.js` compares `/api/v1/me` with the post author. Reddit tokens are never stored.
-   - **Edit-code fallback** (otherwise): the server issues a local `ORACLE-[A-Z0-9]{6}` receipt code (no Reddit network call) and sets `awaiting_fallback_code`. The user edits the code into their Reddit post, then `POST /api/submissions/:id/confirm-fallback` fetches the post and checks the body for the code. A miss is retryable in place (`failure_reason='edit_code_not_found'`); expiry → `verification_expired`.
-   - **Operational limit**: the public `.json` request is best-effort. Reddit currently returns HTTP 403 "blocked by network security" from this development environment for both `www.reddit.com` and `old.reddit.com`, including browser-like User-Agents. Never import/copy a developer's personal browser cookies into WSL or automate a personal Reddit profile to bypass the block.
-   Either path lands verified submissions in `verified_pending_review`. `GET /api/submissions/config` reports `redditOAuthConfigured` and `fallbackEnabled: true`.
-3. **Export verified drafts**: `npm run export-verified` reads `verified_pending_review` rows from `data/game.db`, appends each to `data/queue.jsonl` as a `{ draft: true, draftKind: 'reddit-consent', consent, source }` entry, and flips the row to `exported_pending_approval`. Supports `--dry-run`, `--all` (include already-exported rows), and `--db <path>` (test on a temp copy). This is the only writer that connects verified consent submissions to the game.
-4. **Approve**: `npm run approve` reviews `data/queue.jsonl`. When `OPENROUTER_API_KEY` is set, each draft is structured into a full `GameRecord` via the LLM (using the draft's consent post body as the source text); without the key, approved drafts are written as defensive `GameRecord` scaffolds with empty fields that render as empty states. Approved records land in `data/profiles.jsonl`. `OPENROUTER_API_KEY` is optional — it only affects LLM structuring during approve, not verification or export.
-5. **No auto-publish**: a verified submission never reaches `data/profiles.jsonl` without a human running export + approve.
-6. **Withdrawal**: `DELETE /api/submissions/:id` purges pending post content and ownership proof fields.
+*IMPORTANT: bulk subreddit scraping and arbitrary URL scraping are disabled. Consent import is a maintainer-only tool, not player-facing functionality, and is disabled by default.*
+1. **Enable deliberately**: only a maintainer environment sets `SUBMISSIONS_ENABLED=true`. Normal game deployments keep it false; guarded submission routes return HTTP 503 when disabled.
+2. **Submit**: an authenticated maintainer records one Reddit post URL from its author plus versioned consent (`POST /api/submissions`, auth + rate-limited).
+3. **Verify ownership** — selected by config:
+   - **OAuth**: temporary `identity read`; compare `/api/v1/me` with the post author; never store tokens.
+   - **Edit-code fallback**: issue `ORACLE-[A-Z0-9]{6}`, then `POST /api/submissions/:id/confirm-fallback` fetches that post and checks the code. A miss is retryable; expiry becomes `verification_expired`. Public Reddit JSON currently returns HTTP 403 from this environment, so this path is best-effort. Never copy personal browser cookies or automate a personal Reddit profile to bypass it.
+4. **Export**: `npm run export-verified` appends `verified_pending_review` rows to `data/queue.jsonl` as consent drafts and marks them `exported_pending_approval`. Supports `--dry-run`, `--all`, and `--db <path>`.
+5. **Approve**: `npm run approve` performs human review and writes approved records to `data/profiles.jsonl`; OpenRouter structuring is optional. No verified submission auto-publishes.
+6. **Withdraw**: `DELETE /api/submissions/:id` purges pending post content and ownership proof fields.
 
 ## Code Conventions & Gotchas
 - **Defensive UI Rendering**: When modifying `public/phase*.jsx` components, **ALWAYS use optional chaining (`?.`)** and fallback defaults (`|| {}`, `|| []`) when accessing profile data (e.g., `test_scores`, `academic_profile`, `extracurriculars`). The LLM scraper is imperfect; missing data must render empty states, not crash the React tree. Hardening is already applied to `phase1-profile.jsx`, `phase2-tier.jsx`, `phase4-results.jsx`.
 - **Theme System**: Tokyo Night/Day anchors live only in `public/styles-v2.css`; the toggle in `app.jsx` persists `ao_theme`. Use existing tokens and derive surfaces via `color-mix()`. Ambient WebGL is limited to broad procedural folds: no particles/spinning/noise flicker. Motion is a very slow ≥45s breathing cycle plus clamped scroll/pointer parallax, capped at ~30fps and paused when hidden. Fallback must remain full-viewport and visually coherent when Three/CDN/WebGL fails. All layers are pointer-events-none, below `#root`, and static under `prefers-reduced-motion`.
 - **Scoring Logic (`public/scoring.js` + `phase4-results.jsx`)**: every case scores 0–100, never negative.
-  - School selection: up to **70** — Jaccard overlap `|selected ∩ admitted| / |selected ∪ admitted|` over the visible schools.
-  - University tier: up to **15** — distance credit (correct 15, off-by-one 9, off-by-two 5, else 0).
-  - LAC tier: up to **15** — same distance ladder; the "No LAC Admit" claim scores the full 15 when correct and 0 when wrong.
-  - `SCORING_VERSION = "2"` (see server.js): `/api/scores` validates 0..100; `/api/leaderboard` returns `{username, games, avg, best}` ordered by `avg` with a `LEADERBOARD_MIN_GAMES = 5` floor.
+  - School selection: up to **70** — rounded Jaccard overlap `70 × |selected ∩ admitted| / |selected ∪ admitted|` over only visible schools.
+  - University tier: up to **15** — distance credit (15/9/5/0). The explicit no-T50-University claim scores 15 only when the profile has no configured top-50 university admit.
+  - LAC tier: up to **15** — the same ladder. The explicit no-T20-LAC claim scores 15 only when correct.
+  - First reveal: aggregates only plus a 5-second retry; no tier/school/final-decision disclosure. Retry finalizes the second attempt; timeout finalizes the first. Finalization permanently locks the case to practice, where Correct choices/full answers are visible and no score/retry is allowed.
+  - `SCORING_VERSION = "2"`; `/api/scores` validates 0..100 and rejects locked profiles; `/api/leaderboard` returns global `{username, games, avg, best}` with a five-case floor. There are no seasons.
 - **API Fetching**: Frontend `fetch` calls in `public/app.jsx` must point explicitly to `/api/*` endpoints (e.g., `/api/scores`, `/api/leaderboard`). A typo here now 404s with JSON instead of silently returning `index.html` — so a wrong path fails loudly rather than feeding the SPA HTML to `.json()` parsing.
 - **No inline profiles copy**: `public/data.js` was **removed**. Never reintroduce an inline/bundled profiles copy in the frontend; the only data path is `GET /api/profiles` backed by `data/profiles.jsonl`.
-- **e2e test uses the real DB**: `e2e_test.cjs` writes to the real `data/game.db` (no test fixture). It generates a unique username per run (`e2e_<timestamp>`) and asserts only that run's leaderboard row exists with `games >= 5`. **Never assert global user/score counts** in tests — the DB accumulates rows across runs and CI.
+- **e2e test uses the real DB**: `e2e_test.cjs` writes to `data/game.db` and generates a unique username. It verifies Home/theme persistence, five finalized cases, aggregate-only first reveal, one retry, permanent practice/Correct choices, both no-admit claims, rivalry UI, and the seasonless global leaderboard. Never assert global user/score counts; the DB accumulates rows.

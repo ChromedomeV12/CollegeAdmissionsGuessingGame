@@ -127,6 +127,62 @@ test("caseScore noLacClaim wrong (an LAC was admitted) yields 0 lac points", () 
   assert.equal(r.lacPts, 0);
 });
 
+test("caseScore noUniClaim correct (no top-50 university admit) yields 15 university points", () => {
+  const r = SCORING.caseScore({
+    noUniClaim: true,
+    hasUniAdmit: false,
+    noLacClaim: true,
+    hasLacAdmit: false,
+    selectedKeys: [],
+    admittedInViewKeys: []
+  });
+  assert.equal(r.uniPts, 15);
+});
+
+test("caseScore noUniClaim wrong (a top-50 university admit exists) yields 0 university points", () => {
+  const r = SCORING.caseScore({
+    noUniClaim: true,
+    hasUniAdmit: true,
+    noLacClaim: true,
+    hasLacAdmit: false,
+    selectedKeys: [],
+    admittedInViewKeys: []
+  });
+  assert.equal(r.uniPts, 0);
+});
+
+test("caseScore keeps adjacent-tier and in-band school-selection partial credit", () => {
+  const r = SCORING.caseScore({
+    uniPickIdx: 1,
+    uniActualIdx: 0,
+    noUniClaim: false,
+    lacPickIdx: 0,
+    lacActualIdx: 0,
+    noLacClaim: false,
+    hasLacAdmit: true,
+    selectedKeys: ["adjacent-admit"],
+    admittedInViewKeys: ["adjacent-admit"]
+  });
+  assert.equal(r.uniPts, 9);
+  assert.ok(r.selectionPts > 0);
+  assert.ok(r.score < 100);
+});
+
+test("caseScore gives 5 university tier points at distance two", () => {
+  const r = SCORING.caseScore({
+    uniPickIdx: 2,
+    uniActualIdx: 0,
+    noUniClaim: false,
+    lacPickIdx: 0,
+    lacActualIdx: 0,
+    noLacClaim: false,
+    hasLacAdmit: true,
+    selectedKeys: [],
+    admittedInViewKeys: []
+  });
+  assert.equal(r.uniPts, 5);
+});
+
 test("caseScore mid case sums correctly across all three components", () => {
   const r = SCORING.caseScore({
     uniPickIdx: 2,

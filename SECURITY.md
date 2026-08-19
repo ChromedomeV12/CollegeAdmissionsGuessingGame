@@ -33,8 +33,8 @@ days for a fix before public disclosure; we'll try to be much faster.
 
 ## Known hardening posture
 
-- Passwords: bcrypt-hashed (`bcryptjs`); sessions: short-lived JWTs.
-- Validation: username/password rules on register; bounded `score` /
-  `profile_id` on `/api/scores`; unknown `/api/*` paths return JSON 404s.
-- Secrets: `.env` is gitignored; see `.env.example` for the full list.
-  A startup warning fires if `JWT_SECRET` is unset — never deploy that way.
+- Passwords are bcrypt-hashed (`bcryptjs`); sessions use short-lived JWTs.
+- Registration and score inputs are bounded; `/api/scores` accepts only 0–100 integers and rejects permanently practice-locked profiles.
+- Profile-list responses omit outcomes/source and detail responses strip source. `/api/profiles/:id` is public; first-reveal answer concealment is a gameplay UI contract, not an authorization boundary.
+- Reddit submission mutations/callbacks are disabled unless `SUBMISSIONS_ENABLED=true`. Player deployments must keep the flag false; enabled maintainer environments still require consent, ownership proof, rate limiting, and human review.
+- Unknown `/api/*` paths return JSON 404s. `.env` is gitignored; `.env.example` documents every secret/feature flag. Never deploy with the JWT fallback secret.

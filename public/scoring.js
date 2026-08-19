@@ -30,14 +30,17 @@ window.SCORING = (function () {
   }
 
   // Compute a single per-case score (0..100) from three non-negative
-  // components: university tier, LAC tier (with no-Lac-claim handling), and
-  // selection Jaccard.
+  // components: university tier (with no-university-claim handling), LAC tier
+  // (with no-LAC-claim handling), and selection Jaccard.
   //
   // Input shape:
-  //   { uniPickIdx, lacPickIdx, noLacClaim, hasLacAdmit,
-  //     uniActualIdx, lacActualIdx, selectedKeys, admittedInViewKeys }
+  //   { uniPickIdx, lacPickIdx, noUniClaim, hasUniAdmit,
+  //     noLacClaim, hasLacAdmit, uniActualIdx, lacActualIdx,
+  //     selectedKeys, admittedInViewKeys }
   function caseScore(input) {
-    const uniPts = tierPoints(input.uniPickIdx, input.uniActualIdx);
+    const uniPts = input.noUniClaim
+      ? (input.hasUniAdmit ? 0 : 15)
+      : tierPoints(input.uniPickIdx, input.uniActualIdx);
 
     let lacPts;
     if (input.noLacClaim) {

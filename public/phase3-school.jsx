@@ -175,11 +175,11 @@ function TimeBonusChip() {
 }
 
 function Phase3School({
-  profile, universityTierPick, lacTierPick, noLacClaim,
+  profile, universityTierPick, lacTierPick, noUniClaim, noLacClaim,
   schoolSelections, setSchoolSelections, onReveal, onBack
 }) {
-  const uni = useMemo(() => computeAvailable(profile, universityTierPick, "uni"),
-    [profile, universityTierPick]);
+  const uni = useMemo(() => computeAvailable(profile, noUniClaim ? null : universityTierPick, "uni"),
+    [profile, universityTierPick, noUniClaim]);
   const lac = useMemo(() => computeAvailable(profile, noLacClaim ? null : lacTierPick, "lac"),
     [profile, lacTierPick, noLacClaim]);
 
@@ -203,28 +203,34 @@ function Phase3School({
       </div>
 
       <div className="row" style={{ flexWrap: "wrap", gap: "var(--sp-3)", marginBottom: "var(--sp-4)" }}>
-        <Badge kind="info">University tier · {universityTierPick}</Badge>
+        {noUniClaim
+          ? <Badge kind="info">Applicant was not admitted to any T50 University</Badge>
+          : <Badge kind="info">University tier · {universityTierPick}</Badge>}
         {noLacClaim
-          ? <Badge kind="info">LAC · Claimed no admit</Badge>
+          ? <Badge kind="info">Applicant was not admitted to any T20 LAC</Badge>
           : <Badge kind="info">LAC tier · {lacTierPick}</Badge>}
       </div>
 
-      <SchoolSection
-        title="Universities" subtitle={`Within ${universityTierPick}`}
-        tier={universityTierPick} kind="uni"
-        data={uni} selections={schoolSelections} onToggle={toggle}
-      />
+      {noUniClaim ? (
+        <ClaimSkippedSection
+          title="Universities"
+          claim="Applicant was not admitted to any T50 University"
+        />
+      ) : (
+        <SchoolSection
+          title="Universities" subtitle={`Within ${universityTierPick}`}
+          tier={universityTierPick} kind="uni"
+          data={uni} selections={schoolSelections} onToggle={toggle}
+        />
+      )}
 
       <div style={{ height: "var(--sp-5)" }} />
 
       {noLacClaim ? (
-        <div className="card">
-          <div style={{ fontFamily: "var(--font-serif)", fontSize: 20, letterSpacing: "-0.01em", marginBottom: "var(--sp-2)" }}>Liberal Arts Colleges</div>
-          <div className="callout">
-            <i className="ti ti-info-circle" />
-            <div>You claimed this applicant was not admitted to any LAC. The LAC schools section is skipped — you'll be scored on that claim at the reveal.</div>
-          </div>
-        </div>
+        <ClaimSkippedSection
+          title="Liberal Arts Colleges"
+          claim="Applicant was not admitted to any T20 LAC"
+        />
       ) : (
         <SchoolSection
           title="Liberal Arts Colleges" subtitle={`Within ${lacTierPick}`}
@@ -251,6 +257,19 @@ function Phase3School({
           </span>
           <Btn onClick={onReveal} iconRight="sparkles" ariaLabel="Reveal results">Reveal results</Btn>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ClaimSkippedSection({ title, claim }) {
+  return (
+    <div className="card">
+      <div style={{ fontFamily: "var(--font-serif)", fontSize: 20, letterSpacing: "-0.01em", marginBottom: "var(--sp-2)" }}>{title}</div>
+      <Badge kind="info">Claim locked</Badge>
+      <div className="callout" style={{ marginTop: "var(--sp-3)" }}>
+        <i className="ti ti-info-circle" />
+        <div>{claim}. This school grid is skipped; the claim is scored at reveal.</div>
       </div>
     </div>
   );

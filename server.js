@@ -25,6 +25,7 @@ const REDDIT_CLIENT_ID = process.env.REDDIT_CLIENT_ID || "";
 const REDDIT_CLIENT_SECRET = process.env.REDDIT_CLIENT_SECRET || "";
 const REDDIT_REDIRECT_URI = process.env.REDDIT_REDIRECT_URI || "";
 const REDDIT_USER_AGENT = process.env.REDDIT_USER_AGENT || "web:AdmissionsOracle:1.0 (by /u/MJanW)";
+const SUBMISSIONS_ENABLED = process.env.SUBMISSIONS_ENABLED === "true";
 const CONSENT_VERSION = "2026-08-17";
 const OAUTH_STATE_TTL_MS = 15 * 60 * 1000;
 const FALLBACK_CODE_TTL_MS = 30 * 60 * 1000;
@@ -117,12 +118,6 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users (id)
   );
 
-  CREATE TABLE IF NOT EXISTS seasons (
-    id TEXT PRIMARY KEY,
-    label TEXT NOT NULL,
-    starts_at TEXT,
-    ends_at TEXT
-  );
 `);
 
 // ─── Schema Migration: fallback code columns ─────────────────────────────────
@@ -150,22 +145,6 @@ const SCORING_VERSION = "2";
   }
 }
 
-// ─── Schema Migration: scores.season column ───────────────────────────────────
-const CURRENT_SEASON = "2026-fall";
-{
-  const cols = db.prepare("PRAGMA table_info(scores)").all().map(c => c.name);
-  if (!cols.includes("season")) {
-    db.exec("ALTER TABLE scores ADD COLUMN season TEXT NOT NULL DEFAULT '2026-fall'");
-  }
-}
-
-// ─── Seed current season row ──────────────────────────────────────────────────
-{
-  db.prepare(`
-    INSERT INTO seasons (id, label, starts_at, ends_at) VALUES (?, ?, NULL, NULL)
-    ON CONFLICT(id) DO NOTHING
-  `).run(CURRENT_SEASON, "2026 Fall");
-}
 
 // ─── Load Profiles ────────────────────────────────────────────────────────────
 const profilesPath = path.join(dataDir, "profiles.jsonl");
@@ -201,6 +180,13 @@ function authenticateToken(req, res, next) {
     req.user = user;
     next();
   });
+}
+
+function requireSubmissionsEnabled(req, res, next) {
+  if (!SUBMISSIONS_ENABLED) {
+    return res.status(503).json({ error: "Submission tools are disabled" });
+  }
+  next();
 }
 
 function submissionForClient(row) {
@@ -341,6 +327,7 @@ app.get("/api/me", authenticateToken, (req, res) => {
 
 app.get("/api/submissions/config", authenticateToken, (req, res) => {
   res.json({
+    enabled: SUBMISSIONS_ENABLED,
     redditOAuthConfigured,
     fallbackEnabled: true,
     consentVersion: CONSENT_VERSION,
@@ -348,7 +335,7 @@ app.get("/api/submissions/config", authenticateToken, (req, res) => {
   });
 });
 
-app.get("/api/submissions", authenticateToken, (req, res) => {
+app.get("/api/submissions", requireSubmissionsEnabled, authenticateToken, (req, res) => {
   try {
     const rows = db.prepare(`
       SELECT * FROM reddit_submissions
@@ -363,7 +350,7 @@ app.get("/api/submissions", authenticateToken, (req, res) => {
   }
 });
 
-app.post("/api/submissions", authenticateToken, submissionRateLimit, (req, res) => {
+app.post("/api/submissions", requireSubmissionsEnabled, authenticateToken, submissionRateLimit, (req, res) => {
   if (!redditOAuthConfigured && !FALLBACK_VERIFICATION_ENABLED) {
     return res.status(503).json({ error: "Reddit ownership verification is not configured yet" });
   }
@@ -502,7 +489,7 @@ app.post("/api/submissions", authenticateToken, submissionRateLimit, (req, res) 
   }
 });
 
-app.post("/api/submissions/:id/confirm-fallback", authenticateToken, async (req, res) => {
+app.post("/api/submissions/:id/confirm-fallback", requireSubmissionsEnabled, authenticateToken, async (req, res) => {
   try {
     const row = db.prepare("SELECT * FROM reddit_submissions WHERE id = ? AND user_id = ?").get(req.params.id, req.user.id);
     if (!row) return res.status(404).json({ error: "Submission not found" });
@@ -561,7 +548,7 @@ app.post("/api/submissions/:id/confirm-fallback", authenticateToken, async (req,
   }
 });
 
-app.get("/api/submissions/reddit/callback", async (req, res) => {
+app.get("/api/submissions/reddit/callback", requireSubmissionsEnabled, async (req, res) => {
   try {
     const rawState = typeof req.query.state === "string" ? req.query.state : "";
     const code = typeof req.query.code === "string" ? req.query.code : "";
@@ -651,7 +638,7 @@ app.get("/api/submissions/reddit/callback", async (req, res) => {
   }
 });
 
-app.delete("/api/submissions/:id", authenticateToken, (req, res) => {
+app.delete("/api/submissions/:id", requireSubmissionsEnabled, authenticateToken, (req, res) => {
   try {
     const row = db.prepare("SELECT * FROM reddit_submissions WHERE id = ? AND user_id = ?").get(req.params.id, req.user.id);
     if (!row) return res.status(404).json({ error: "Submission not found" });
@@ -691,14 +678,13 @@ app.get("/api/profiles/:id", (req, res) => {
 });
 
 app.post("/api/scores", authenticateToken, (req, res) => {
-  const { profileId, score, breakdown, season } = req.body;
+  const { profileId, score, breakdown } = req.body;
   if (typeof profileId !== 'string' || profileId.length === 0 || profileId.length > 64) {
     return res.status(400).json({ error: "profile_id must be a non-empty string up to 64 characters" });
   }
   if (!Number.isInteger(score) || score < 0 || score > 100) {
     return res.status(400).json({ error: "score must be an integer between 0 and 100" });
   }
-  const scoreSeason = typeof season === 'string' && season.length > 0 ? season : CURRENT_SEASON;
 
   try {
     // Profile lock: practice-only profiles may not record scores
@@ -707,17 +693,17 @@ app.post("/api/scores", authenticateToken, (req, res) => {
       return res.status(409).json({ error: "Profile locked — practice only" });
     }
 
-    // Keep-higher within (user, profile, season)
-    const current = db.prepare("SELECT score, season FROM scores WHERE user_id = ? AND profile_id = ?").get(req.user.id, profileId);
-    const shouldUpdate = !current || (current.season === scoreSeason ? score > current.score : true);
+    // Keep the highest score for each user/profile pair
+    const current = db.prepare("SELECT score FROM scores WHERE user_id = ? AND profile_id = ?").get(req.user.id, profileId);
+    const shouldUpdate = !current || score > current.score;
 
     if (shouldUpdate) {
       db.prepare(`
-        INSERT INTO scores (user_id, profile_id, score, breakdown, season)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO scores (user_id, profile_id, score, breakdown)
+        VALUES (?, ?, ?, ?)
         ON CONFLICT(user_id, profile_id) DO UPDATE SET
-        score=excluded.score, breakdown=excluded.breakdown, season=excluded.season
-      `).run(req.user.id, profileId, score, breakdown ? JSON.stringify(breakdown) : null, scoreSeason);
+        score=excluded.score, breakdown=excluded.breakdown
+      `).run(req.user.id, profileId, score, breakdown ? JSON.stringify(breakdown) : null);
     }
     res.json({ success: true });
   } catch (err) {
@@ -730,7 +716,6 @@ const LEADERBOARD_MIN_GAMES = 5;
 
 app.get("/api/leaderboard", (req, res) => {
   try {
-    const season = typeof req.query.season === 'string' && req.query.season.length > 0 ? req.query.season : CURRENT_SEASON;
     const rows = db.prepare(`
       SELECT u.username,
              COUNT(s.profile_id) AS games,
@@ -738,12 +723,11 @@ app.get("/api/leaderboard", (req, res) => {
              MAX(s.score) AS best
       FROM users u
       JOIN scores s ON u.id = s.user_id
-      WHERE s.season = ?
       GROUP BY u.id
       HAVING games >= ?
       ORDER BY avg DESC
       LIMIT 100
-    `).all(season, LEADERBOARD_MIN_GAMES);
+    `).all(LEADERBOARD_MIN_GAMES);
     res.json(rows);
   } catch (err) {
     console.error(err);
@@ -833,13 +817,13 @@ app.get("/api/duel/:username", authenticateToken, (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Best score per profile, current season, for both players
+    // Best score per profile for both players
     const bestPerProfile = (userId) => db.prepare(`
       SELECT profile_id AS profileId, MAX(score) AS score
       FROM scores
-      WHERE user_id = ? AND season = ?
+      WHERE user_id = ?
       GROUP BY profile_id
-    `).all(userId, CURRENT_SEASON);
+    `).all(userId);
 
     const youRows = bestPerProfile(req.user.id);
     const themRows = bestPerProfile(rival.id);
@@ -862,17 +846,6 @@ app.get("/api/duel/:username", authenticateToken, (req, res) => {
   }
 });
 
-// ─── API Endpoints: Seasons ───────────────────────────────────────────────────
-
-app.get("/api/seasons", (req, res) => {
-  try {
-    const seasons = db.prepare("SELECT id, label FROM seasons ORDER BY id ASC").all();
-    res.json({ current: CURRENT_SEASON, seasons });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
 
 app.get("/api/stats", (req, res) => {
   try {

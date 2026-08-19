@@ -9,12 +9,13 @@ contribute code, and the ground rules that keep the project healthy.
    it is licensed to this project under the repository's
    [MIT License](LICENSE). Don't submit code you don't have the right to
    license that way.
-2. **Owner-submitted data only.** Do not add bulk subreddit crawlers or
-   arbitrary URL import paths. A Reddit-derived case must have a versioned
-   consent receipt, pass the temporary OAuth ownership check, and complete
-   human anonymization/editorial review before it reaches
-   `data/profiles.jsonl`. Never ingest private data, identifying information,
-   or content behind authentication/paywalls.
+2. **Owner-consented data only.** Do not add bulk subreddit crawlers or
+   arbitrary URL import paths. A Reddit-derived case must carry versioned
+   consent, pass OAuth author matching or an edit-code ownership check, and
+   complete human anonymization/editorial review before it reaches
+   `data/profiles.jsonl`. Import routes remain disabled-by-default maintainer
+   tooling. Never ingest private data, identifying information, or content
+   behind authentication/paywalls.
 3. **No credentials in git.** Secrets belong in `.env` (already gitignored).
    Never commit API keys, tokens, or database dumps. If you accidentally push
    a secret, rotate it immediately — history rewriting is a last resort.
@@ -30,7 +31,7 @@ contribute code, and the ground rules that keep the project healthy.
    the defensive-rendering rules for `public/phase*.jsx`).
 3. **Verify before opening a PR:**
    ```bash
-   npm test        # end-to-end Puppeteer suite — must end with ALL STEPS PASSED
+   npm test        # unit suite + end-to-end Puppeteer harness
    ```
    For UI changes, also run the relevant sections of
    [AGENT_CHECKLIST.md](AGENT_CHECKLIST.md).

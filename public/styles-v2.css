@@ -81,11 +81,17 @@
 
   /* Matte glass — shared treatment for elevated dossier surfaces. Kept
      opaque enough that cards read as Tokyo Night surfaces first, glass
-     second. */
+     second; opacity/shadow tuned so panels separate cleanly from the film
+     grain layer beneath them. Blur stays 12px everywhere. */
   --glass-blur: blur(12px) saturate(125%);
-  --glass-bg: color-mix(in srgb, var(--bg-surface) 72%, transparent);
-  --glass-shadow: 0 12px 32px rgb(0 0 0 / .30), inset 0 1px 0 rgb(255 255 255 / .07);
-  --glass-shadow-sm: 0 3px 10px rgb(0 0 0 / .22), inset 0 1px 0 rgb(255 255 255 / .07);
+  --glass-bg: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+  --glass-shadow: 0 16px 40px rgb(0 0 0 / .38), inset 0 1px 0 rgb(255 255 255 / .08);
+  --glass-shadow-sm: 0 4px 12px rgb(0 0 0 / .28), inset 0 1px 0 rgb(255 255 255 / .08);
+
+  /* Film overlay — monochrome grain + matte veil sitting over the wallpaper
+     and under #root. Soft-light blend keeps it a texture, not a tint. */
+  --film-opacity: .2;
+  --film-blend: soft-light;
 
   --font-sans: "DM Sans", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
@@ -163,9 +169,14 @@
 
   /* Day glass — more opaque than before so panels read as Tokyo Day
      paper, soft foreground-alpha shadow, bright top highlight. */
-  --glass-bg: color-mix(in srgb, var(--bg-surface) 80%, transparent);
-  --glass-shadow: 0 12px 28px rgb(52 59 88 / .14), inset 0 1px 0 rgb(255 255 255 / .65);
-  --glass-shadow-sm: 0 3px 10px rgb(52 59 88 / .10), inset 0 1px 0 rgb(255 255 255 / .65);
+  --glass-bg: color-mix(in srgb, var(--bg-surface) 86%, transparent);
+  --glass-shadow: 0 14px 34px rgb(52 59 88 / .18), inset 0 1px 0 rgb(255 255 255 / .65);
+  --glass-shadow-sm: 0 4px 12px rgb(52 59 88 / .12), inset 0 1px 0 rgb(255 255 255 / .65);
+
+  /* Day film — same grain, gentler: soft-light at lower opacity so the paper
+     canvas keeps its brightness (overlay would over-speckle a light field). */
+  --film-opacity: .13;
+  --film-blend: soft-light;
 }
 
 * { box-sizing: border-box; }
@@ -191,6 +202,36 @@ body::before {
   opacity: .9;
   position: fixed;
   z-index: 100;
+}
+
+/* Film overlay — a matte analog layer between wallpaper and content. Two
+   ingredients: (1) monochrome grain from an inline SVG feTurbulence tile,
+   desaturated via feColorMatrix so it carries no hue; (2) a matte veil that
+   gently closes the top/bottom of the frame. The whole layer blends
+   soft-light at a low, theme-scoped opacity (--film-opacity: ~.20 night,
+   ~.13 day), reads as paper film rather than glass — it has NO
+   backdrop-filter and no blur of its own. Layering: fixed, z-index 0, and
+   generated as body's last child, so it paints above .ambient-waves
+   (z-index 0, earlier in DOM) and below #root (z-index 1). Never
+   interactive. */
+body::after {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E"),
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--bg-canvas-2) 46%, transparent) 0%,
+      transparent 30%,
+      transparent 70%,
+      color-mix(in srgb, var(--bg-canvas-2) 46%, transparent) 100%);
+  background-repeat: repeat, no-repeat;
+  background-size: 180px 180px, 100% 100%;
+  content: "";
+  inset: 0;
+  mix-blend-mode: var(--film-blend);
+  opacity: var(--film-opacity);
+  pointer-events: none;
+  position: fixed;
+  user-select: none;
+  z-index: 0;
 }
 
 /* Sculpted-fold backdrop — procedural relief wallpaper. The WebGL canvas is
@@ -249,7 +290,8 @@ body::before {
 .metric,
 .badge,
 .final-banner,
-.callout {
+.callout,
+.home-rule {
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
 }
@@ -299,7 +341,7 @@ textarea::placeholder { color: var(--text-tertiary); }
 .topbar {
   align-items: center;
   background: var(--glass-bg);
-  border: 1px solid var(--border-2);
+  border: 1px solid var(--border-ink);
   border-radius: var(--r-lg);
   box-shadow: var(--glass-shadow);
   display: flex;
@@ -313,6 +355,27 @@ textarea::placeholder { color: var(--text-tertiary); }
 }
 
 .topbar > .row { justify-content: flex-end; }
+
+/* Active round, desktop (>=1024): the chrome must stay a single row — no
+   wrapping, no overflow. Gaps, padding, brand mark, rank chip, and ghost
+   actions all step down one size; the submission entry point is simply
+   absent from this header's markup. Mobile keeps the responsive stacking
+   from the max-width queries below. */
+@media (min-width: 1024px) {
+  .topbar.is-active-round { flex-wrap: nowrap; gap: 12px; padding: 10px 14px; }
+  .topbar.is-active-round .brand h1 { font-size: 19px; }
+  .topbar.is-active-round .brand-mark { height: 30px; width: 30px; }
+  .topbar.is-active-round .brand-mark::before { left: 5px; right: 5px; top: 14px; }
+  .topbar.is-active-round .brand-mark::after { bottom: 5px; left: 14px; top: 5px; }
+  .topbar.is-active-round .phase-meta { flex-wrap: nowrap; white-space: nowrap; }
+  .topbar.is-active-round > .row { flex-wrap: nowrap; gap: 8px; }
+  .topbar.is-active-round .rank-chip { font-size: 10px; gap: 6px; min-height: 38px; padding: 4px 8px 4px 5px; }
+  .topbar.is-active-round .rank-chip__icon { height: 26px; width: 26px; }
+  .topbar.is-active-round .btn,
+  .topbar.is-active-round .btn-primary,
+  .topbar.is-active-round .btn-ghost,
+  .topbar.is-active-round .btn--ghost { min-height: 38px; padding: 8px 12px; white-space: nowrap; }
+}
 
 .brand { align-items: center; display: flex; gap: 12px; min-width: max-content; }
 
@@ -609,6 +672,12 @@ hr.sep { border: 0; border-top: 1px solid var(--border-1); margin: 18px 0; }
 }
 .school-card.is-selected .check { background: var(--accent); border-color: var(--accent); }
 
+/* Completed case tick — the exact Tokyo greens, not derived tints. Dark
+   canvas tick on Night green, white tick on Day green; both pairs pass
+   contrast for the small ti-check glyph. */
+.check.is-complete { background: #9ece6a; border-color: #9ece6a; color: #1a1b26; }
+[data-theme="light"] .check.is-complete { background: #587539; border-color: #587539; color: #ffffff; }
+
 .library-intro { align-items: end; display: grid; gap: 28px; grid-template-columns: 1.35fr .65fr; margin: 8px 0 56px; }
 .library-intro h2 { font-family: var(--font-serif); font-size: clamp(42px, 7vw, 76px); font-weight: 700; letter-spacing: -.07em; line-height: .88; margin: 14px 0 20px; }
 .library-intro p { color: var(--text-secondary); font-size: 16px; margin: 0; max-width: 640px; }
@@ -637,6 +706,116 @@ hr.sep { border: 0; border-top: 1px solid var(--border-1); margin: 18px 0; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Home — the dossier cover. Left-set editorial hero over the sculpted-fold
+   wallpaper: kicker, display title, copy, one primary action. Rules read as
+   three matte-glass slips; the meta footer (authors + GitHub) is pinned to
+   the foot of the frame so a 16:9 viewport composes like a title page
+   instead of a floating island. */
+.home-screen {
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+  max-width: 1080px;
+  min-height: calc(100vh - 300px);
+}
+
+.home-hero {
+  max-width: 760px;
+  padding: clamp(40px, 8vh, 88px) 0 clamp(24px, 4vh, 40px);
+}
+
+.home-kicker {
+  align-items: center;
+  color: var(--accent);
+  display: inline-flex;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  gap: 8px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.home-kicker::before { background: var(--stamp); content: ""; height: 7px; width: 7px; }
+
+.home-title {
+  font-family: var(--font-serif);
+  font-size: var(--fs-display);
+  font-weight: 700;
+  letter-spacing: -.065em;
+  line-height: .9;
+  margin: 16px 0 22px;
+}
+.home-title em { color: var(--accent); font-style: normal; }
+
+.home-copy {
+  color: var(--text-secondary);
+  font-size: 17px;
+  line-height: 1.7;
+  margin: 0;
+  max-width: 600px;
+}
+
+.home-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
+
+.home-rules {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: clamp(32px, 6vh, 64px);
+}
+
+.home-rule {
+  background: var(--glass-bg);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
+  box-shadow: var(--glass-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+}
+.home-rule .label { color: var(--accent); }
+.home-rule strong { color: var(--text-primary); font-size: 15px; }
+.home-rule p { color: var(--text-secondary); font-size: 13px; line-height: 1.6; margin: 0; }
+
+.home-meta {
+  align-items: center;
+  border-top: 1px solid var(--border-light);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 24px;
+}
+
+.home-authors {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .04em;
+}
+
+.home-github {
+  align-items: center;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  color: var(--text-primary);
+  display: inline-flex;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  gap: 8px;
+  letter-spacing: .04em;
+  min-height: 38px;
+  padding: 8px 14px;
+  text-decoration: none;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.home-github:hover { background: var(--bg-surface-2); border-color: var(--border-ink); color: var(--accent); }
+.home-github i { font-size: 15px; }
 
 .metric {
   background: var(--glass-bg);
@@ -805,6 +984,24 @@ hr.sep { border: 0; border-top: 1px solid var(--border-1); margin: 18px 0; }
 .collapsible[open] summary .chev { transform: rotate(180deg); }
 .collapsible .body { color: var(--text-secondary); font-size: var(--fs-base); padding: 8px 0 16px; }
 
+/* Leaderboard — header and body rows share .leaderboard-grid so every
+   column aligns across the whole board. One alignment decision: LEFT,
+   everywhere, including the numeric cells (tabular-nums keeps the figures
+   steady). Global rows are rank / player / avg / cases / best; duel rows
+   collapse to case / you / them via the modifier. */
+.leaderboard-grid {
+  align-items: center;
+  display: grid;
+  gap: var(--sp-3);
+  grid-template-columns: 40px minmax(0, 1fr) 80px 64px 64px;
+  padding: 10px var(--sp-5);
+  text-align: left;
+}
+.leaderboard-grid:not(:last-child) { border-bottom: 1px solid var(--border-light); }
+.leaderboard-grid > * { min-width: 0; text-align: left; }
+.leaderboard-grid .num { font-variant-numeric: tabular-nums; text-align: left; }
+.leaderboard-grid--duel { grid-template-columns: minmax(0, 1fr) 64px 64px; }
+
 /* Submission center */
 .submission-page { margin: 0 auto; max-width: 1100px; }
 .submission-hero {
@@ -904,6 +1101,7 @@ hr.sep { border: 0; border-top: 1px solid var(--border-1); margin: 18px 0; }
 .tier-pick:focus-visible,
 .school-card:focus-visible,
 .collapsible summary:focus-visible,
+.home-github:focus-visible,
 a:focus-visible { box-shadow: var(--focus-ring); }
 
 @media (max-width: 920px) {
@@ -945,6 +1143,14 @@ a:focus-visible { box-shadow: var(--focus-ring); }
   .proof-path { grid-template-columns: 1fr; }
   .proof-path > div { border-bottom: 1px solid var(--on-ink-line); border-right: 0; }
   .proof-path > div:last-child { border-bottom: 0; }
+  /* Home: rules stack, meta footer goes column, hero breathes less. */
+  .home-screen { min-height: 0; }
+  .home-hero { padding: 24px 0 8px; }
+  .home-rules { grid-template-columns: 1fr; margin-top: 36px; }
+  .home-meta { align-items: flex-start; flex-direction: column; gap: 10px; margin-top: 44px; }
+  /* Leaderboard: same columns, tighter tracks — header/body stay aligned. */
+  .leaderboard-grid { gap: var(--sp-2); grid-template-columns: 34px minmax(0, 1fr) 60px 50px 50px; padding: 10px 14px; }
+  .leaderboard-grid--duel { grid-template-columns: minmax(0, 1fr) 56px 56px; }
 }
 
 @media (max-width: 440px) {

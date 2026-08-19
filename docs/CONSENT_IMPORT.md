@@ -2,20 +2,20 @@
 
 ## Product rule
 
-Admissions Oracle does not crawl subreddits or publish a case from a pasted URL. A new Reddit-derived case must move through four gates:
+Admissions Oracle does not expose Reddit submission to players, crawl subreddits, or publish a case from a pasted URL. The import API is a disabled-by-default maintainer tool: normal game deployments keep `SUBMISSIONS_ENABLED=false`, and guarded routes return HTTP 503. When a maintainer deliberately enables it, a Reddit-derived case must pass four gates:
 
-1. An authenticated app user submits one Reddit post URL and accepts a versioned consent statement.
-2. Ownership is proven. When Reddit OAuth is configured (preferred), the user completes a temporary `identity read` grant and the server compares `/api/v1/me` with the post author. When OAuth is **not** configured, the user proves ownership with an edit-code: the server issues an `ORACLE-XXXXXX` receipt code that the submitter must edit into their Reddit post body.
-3. The server fetches that one post (via the OAuth API, or the public JSON endpoint in fallback mode) and confirms ownership — by author match, or by finding the receipt code in the post body.
-4. A matched post enters a private `verified_pending_review` queue. Human review is required before any separate publication workflow.
+1. An authenticated maintainer records one Reddit post URL from its author and the author's versioned consent.
+2. Ownership is proven. With Reddit OAuth configured (preferred), the author completes a temporary `identity read` grant and the server compares `/api/v1/me` with the post author. Otherwise, the author places an issued `ORACLE-XXXXXX` receipt code in the post body.
+3. The server fetches that one post and confirms ownership by exact author match or receipt-code presence.
+4. A match enters a private `verified_pending_review` queue. Human anonymization/editorial review and separate export/approval commands are required before publication.
 
-There is no automatic path from URL submission to `data/profiles.jsonl`.
+There is no automatic path from a URL to `data/profiles.jsonl`, and no player-facing submission center.
 
 ## Data flow
 
 ```mermaid
 flowchart LR
-  U["Signed-in player"] -->|"URL + explicit consent"| A["Admissions Oracle API"]
+  U["Authenticated maintainer"] -->|"Author URL + explicit consent"| A["Guarded Admissions Oracle API"]
   A -->|"OAuth grant OR edit-code"| R["Reddit"]
   R -->|"Account identity OR receipt code in post"| O["Ownership comparison"]
   O -->|"Mismatch"| X["No import"]
@@ -27,7 +27,7 @@ flowchart LR
 
 ## Proof model
 
-There are two proof paths, selected by whether Reddit OAuth credentials are configured.
+There are two proof paths, selected by whether Reddit OAuth credentials are configured after the maintainer has explicitly enabled submission tooling.
 
 ### OAuth path (preferred)
 
@@ -104,14 +104,14 @@ The export CLI (`npm run export-verified`) moves `verified_pending_review` rows 
 
 ## API and security controls
 
-- All submission list, create, and withdrawal routes require the existing app bearer token.
+- `GET /api/submissions/config` requires the existing bearer token and reports `enabled`. List/create/confirm/callback/delete routes additionally require `SUBMISSIONS_ENABLED=true`; otherwise they return `503 {"error":"Submission tools are disabled"}`.
+- The game UI contains no submission navigation or form. The API/CLI workflow is for maintainers only.
 - Create attempts are limited to five per app user per hour in the current process.
 - URLs accept HTTPS links from known Reddit hosts only and discard query strings and tracking parameters.
-- Duplicate Reddit post IDs are rejected unless the existing row is owned by the same user and still in a retryable state (`awaiting_reddit_verification`, `awaiting_fallback_code`, `verification_expired`, `verification_cancelled`, `verification_failed`, or `withdrawn`), in which case the submission is reset with a fresh proof and flow payload.
-- OAuth requests use the least-privilege `identity read` scopes and `duration=temporary`.
-- Callback state is single-use because its stored hash is cleared on every terminal result.
-- Errors shown to users do not expose Reddit tokens, client secrets, or raw API responses.
-- Production must use HTTPS, a strong `JWT_SECRET`, a persistent SQLite volume, backups, retention rules, and structured security logs that exclude post bodies and secrets.
+- Duplicate Reddit post IDs are rejected unless the existing row belongs to the same authenticated maintainer and remains retryable, in which case the proof state is refreshed.
+- OAuth requests use least-privilege `identity read` scopes and `duration=temporary`; callback state is single-use.
+- Errors do not expose Reddit tokens, client secrets, or raw API responses.
+- Production requires HTTPS, a strong `JWT_SECRET`, persistent SQLite storage, backups, retention rules, and security logs excluding post bodies/secrets. Keep the player-facing deployment's submission flag disabled.
 
 ## Editorial export and approval pipeline
 
@@ -120,17 +120,18 @@ Once a submission reaches `verified_pending_review`, it is not yet a playable ca
 1. **Export verified drafts** — `npm run export-verified`. Reads `data/game.db` for rows with `status='verified_pending_review'` (pass `--all` to also re-export rows already in `exported_pending_approval`), appends each to `data/queue.jsonl` as a draft entry `{ draft: true, draftKind: 'reddit-consent', consent: { … }, source: { subreddit, scrape_date } }`, then updates the row to `exported_pending_approval`. Supports `--dry-run` (no writes) and `--db <path>` to target a copy. This is the only writer that connects verified consent submissions to the game.
 2. **Approve drafts** — `npm run approve`. Structured via OpenRouter when `OPENROUTER_API_KEY` is set; otherwise approved drafts are written as defensive `GameRecord` scaffolds with empty fields that render as empty states. See `AGENTS.md`.
 
-## Launch requirements
+## Enablement requirements
 
-Before enabling public submissions:
+Before setting `SUBMISSIONS_ENABLED=true` in any maintainer environment:
 
-- register a Reddit **web app** and set the callback URI exactly; if API access is unavailable, treat the edit-code public-JSON path as best-effort and be prepared to disable confirmation or switch to a manual post-text workflow when Reddit returns 403;
+- isolate it from the normal player-facing deployment and keep the latter disabled;
+- register a Reddit **web app** and set the callback URI exactly; if API access is unavailable, treat public-JSON edit-code confirmation as best-effort and disable it or adopt a reviewed manual workflow when Reddit returns 403;
 - never deploy personal-cookie extraction or authenticated browser scraping as an API substitute;
-- publish a privacy policy describing Reddit data use, retention, withdrawal, and contact methods;
-- complete a legal review of copyright, publicity, minors' data, and applicable privacy law;
+- publish a privacy policy covering Reddit data use, retention, withdrawal, and contact methods;
+- complete legal review of copyright, publicity, minors' data, and applicable privacy law;
 - replace or re-consent legacy seed cases that predate this ownership flow;
-- define the editorial anonymization checklist and appeals/removal process;
+- define editorial anonymization, rejection, appeals, and removal procedures;
 - add persistent rate limiting and an abuse-reporting channel;
-- verify current Reddit Developer Terms and Data API Terms again immediately before launch.
+- verify current Reddit Developer Terms and Data API Terms immediately before enablement.
 
 The implementation reduces risk but is not legal advice and does not by itself establish permission for third-party content quoted inside a user's post.

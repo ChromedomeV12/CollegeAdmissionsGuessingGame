@@ -1,6 +1,6 @@
 // Phase 1 — Profile viewer with three tabs
 
-function Phase1Profile({ profile, onStart, profileIdx, profileCount }) {
+function Phase1Profile({ profile, onStart, profileIdx, profileCount, canViewCorrectChoices = false }) {
   const [tab, setTab] = useState("overview");
   const [chartMode, setChartMode] = useState("bar"); // bar | donut
 
@@ -16,7 +16,6 @@ function Phase1Profile({ profile, onStart, profileIdx, profileCount }) {
       <Stepper phase={1} />
 
       <div className="card" style={{ padding: 0 }}>
-        {/* header */}
         <div className="section-head" style={{ padding: "var(--sp-4) var(--sp-5)", borderBottom: "1px solid var(--border-1)", marginBottom: 0 }}>
           <div className="title-block">
             <span className="eyebrow">Applicant {String(profileIdx + 1).padStart(2, "0")} / {String(profileCount).padStart(2, "0")}</span>
@@ -25,15 +24,15 @@ function Phase1Profile({ profile, onStart, profileIdx, profileCount }) {
           <Btn onClick={onStart} iconRight="arrow-right">Start guessing</Btn>
         </div>
 
-        {/* tabs */}
         <div style={{ padding: "0 var(--sp-5)" }}>
           <Tabs
             active={tab}
             onChange={setTab}
             tabs={[
-              { id: "overview",   label: "Overview" },
-              { id: "academics",  label: "Academics" },
-              { id: "ecs",        label: "Extracurriculars" }
+              { id: "overview", label: "Overview" },
+              { id: "academics", label: "Academics" },
+              { id: "ecs", label: "Extracurriculars" },
+              ...(canViewCorrectChoices ? [{ id: "correct", label: "Correct choices" }] : []),
             ]}
           />
         </div>
@@ -47,12 +46,77 @@ function Phase1Profile({ profile, onStart, profileIdx, profileCount }) {
             />
           )}
           {tab === "ecs" && <ECsTab ecs={ecs} />}
+          {tab === "correct" && canViewCorrectChoices && <CorrectChoicesTab profile={profile} />}
         </div>
       </div>
     </div>
   );
 }
 
+function CorrectChoicesTab({ profile }) {
+  const T = window.TIERS;
+  const admitted = T?.getAdmittedSchools ? T.getAdmittedSchools(profile) : [];
+  const admittedKeys = new Set(admitted.map(name => T.normSchool(name)));
+
+  function bestBand(tiers, kind) {
+    for (const tier of tiers || []) {
+      const schools = T.getSchoolsInTier(tier, kind);
+      if (schools.some(school => admittedKeys.has(school.key))) return tier;
+    }
+    return null;
+  }
+
+  const uniTier = bestBand(T?.UNI_TIER_LIST, "uni");
+  const lacTier = bestBand(T?.LAC_TIER_LIST, "lac");
+  const groups = [
+    ["Universities", admitted.filter(name => T.schoolKind(name) === "uni")],
+    ["Liberal Arts Colleges", admitted.filter(name => T.schoolKind(name) === "lac")],
+    ["Other admits", admitted.filter(name => !T.schoolKind(name))],
+  ];
+  const finalDecision = profile.application_results?.final_decision;
+
+  return (
+    <div className="fade-in stack" style={{ gap: "var(--sp-4)" }}>
+      <div className="callout callout--teach" style={{ alignItems: "flex-start" }}>
+        <i className="ti ti-lock-open" aria-hidden="true" />
+        <div className="stack" style={{ gap: "var(--sp-1)" }}>
+          <strong>Correct choices</strong>
+          <span className="muted">This file is finalized and no longer affects your score.</span>
+        </div>
+      </div>
+
+      <div className="grid grid-2">
+        <div className="card">
+          <span className="label">Best top-50 university band</span>
+          <strong style={{ display: "block", marginTop: "var(--sp-2)" }}>{uniTier || "No top-50 university admit"}</strong>
+        </div>
+        <div className="card">
+          <span className="label">Best top-20 LAC band</span>
+          <strong style={{ display: "block", marginTop: "var(--sp-2)" }}>{lacTier || "No top-20 LAC admit"}</strong>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="label" style={{ marginBottom: "var(--sp-3)" }}>Admitted schools</div>
+        {groups.map(([label, schools]) => (
+          <div key={label} style={{ marginTop: label === "Universities" ? 0 : "var(--sp-3)" }}>
+            <div className="label" style={{ color: "var(--text-tertiary)" }}>{label}</div>
+            {schools.length > 0
+              ? <div className="row" style={{ gap: "var(--sp-2)", flexWrap: "wrap", marginTop: "var(--sp-1)" }}>{schools.map(name => <Badge key={name} kind="ok" icon="check">{name}</Badge>)}</div>
+              : <div className="muted" style={{ marginTop: "var(--sp-1)" }}>None</div>}
+          </div>
+        ))}
+      </div>
+
+      <div className="final-banner">
+        <span className="stamp-mark" aria-hidden="true">Admitted</span>
+        <span className="label">Final enrollment</span>
+        <div className="school">{finalDecision?.school || "—"}</div>
+        <div className="date">Admitted on {formatDate(finalDecision?.decision_date)}</div>
+      </div>
+    </div>
+  );
+}
 function OverviewTab({ d }) {
   const m = (x) => x ? x : <span className="muted">—</span>;
   const rows = [

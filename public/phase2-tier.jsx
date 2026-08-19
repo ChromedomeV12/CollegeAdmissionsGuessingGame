@@ -48,6 +48,7 @@ function Phase2Tier({
   profile,
   universityTierPick, setUniversityTierPick,
   lacTierPick, setLacTierPick,
+  noUniClaim, setNoUniClaim,
   noLacClaim, setNoLacClaim,
   onLock, onBack
 }) {
@@ -64,7 +65,7 @@ function Phase2Tier({
           <span className="eyebrow">Step 02</span>
           <h2>Predict the ceiling</h2>
         </div>
-        <span className="sub">Pick one university tier and one LAC tier.</span>
+        <span className="sub">Pick one university outcome and one LAC outcome.</span>
         <TimeBonusChip />
       </div>
 
@@ -80,17 +81,29 @@ function Phase2Tier({
           <span className="label">Panel A · University tier</span>
           <span className="chip">1 of 5</span>
         </div>
-        <div className="tier-grid tier-grid--uni">
+        <div className="tier-grid tier-grid--uni" aria-disabled={noUniClaim}>
           {T.UNI_TIER_LIST.map(t => (
             <TierPickCard
               key={t}
               label={t}
               sublabel={T.TIER_RANGE[t]}
-              active={universityTierPick === t}
-              onClick={() => setUniversityTierPick(t === universityTierPick ? null : t)}
+              active={!noUniClaim && universityTierPick === t}
+              onClick={() => {
+                setUniversityTierPick(t === universityTierPick ? null : t);
+                setNoUniClaim(false);
+              }}
             />
           ))}
         </div>
+        <ClaimCard
+          active={noUniClaim}
+          label="Applicant was not admitted to any T50 University"
+          hint="Claim this if the profile had zero admits in every configured top-50 university band."
+          onToggle={() => {
+            setNoUniClaim(!noUniClaim);
+            if (!noUniClaim) setUniversityTierPick(null);
+          }}
+        />
       </div>
 
       <div className="card stagger" style={{ marginBottom: "var(--sp-3)" }}>
@@ -105,7 +118,10 @@ function Phase2Tier({
               label={t}
               sublabel={T.TIER_RANGE[t]}
               active={!noLacClaim && lacTierPick === t}
-              onClick={() => setLacTierPick(t === lacTierPick ? null : t)}
+              onClick={() => {
+                setLacTierPick(t === lacTierPick ? null : t);
+                setNoLacClaim(false);
+              }}
             />
           ))}
         </div>
@@ -113,28 +129,15 @@ function Phase2Tier({
           LACs are ranked on a separate US News list.
         </div>
 
-        <div
-          className={"school-card" + (noLacClaim ? " is-selected" : "")}
-          onClick={() => { setNoLacClaim(!noLacClaim); if (!noLacClaim) setLacTierPick(null); }}
-          role="button"
-          tabIndex={0}
-          aria-pressed={noLacClaim}
-          onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setNoLacClaim(!noLacClaim); if (!noLacClaim) setLacTierPick(null); } }}
-          style={{ marginTop: "var(--sp-3)", borderStyle: "dashed", gap: "var(--sp-3)" }}
-        >
-          <span className="check">
-            {noLacClaim ? <i className="ti ti-check" /> : null}
-          </span>
-          <div className="grow">
-            <div className="row" style={{ gap: "var(--sp-2)" }}>
-              <span className="name">Applicant was not admitted to any LAC</span>
-              <span className="chip">15 pts</span>
-            </div>
-            <div className="muted" style={{ marginTop: "var(--sp-1)", fontSize: "var(--fs-sm)" }}>
-              Claim this if the profile had zero LAC admits. Right — you earn the full 15 LAC points. Wrong — they did land an LAC admit — scores 0.
-            </div>
-          </div>
-        </div>
+        <ClaimCard
+          active={noLacClaim}
+          label="Applicant was not admitted to any T20 LAC"
+          hint="Claim this if the profile had zero admits in every configured top-20 LAC band."
+          onToggle={() => {
+            setNoLacClaim(!noLacClaim);
+            if (!noLacClaim) setLacTierPick(null);
+          }}
+        />
       </div>
 
       <hr className="divider" />
@@ -142,7 +145,7 @@ function Phase2Tier({
         <Btn variant="ghost" onClick={onBack} icon="arrow-left">Back to profile</Btn>
         <Btn
           onClick={onLock}
-          disabled={!universityTierPick || !(lacTierPick || noLacClaim)}
+          disabled={!(universityTierPick || noUniClaim) || !(lacTierPick || noLacClaim)}
           iconRight="lock"
         >
           Lock in predictions
@@ -163,6 +166,37 @@ function TierPickCard({ label, sublabel, active, onClick }) {
       <span className="tname">{label}</span>
       <span className="trange">{sublabel}</span>
     </button>
+  );
+}
+
+function ClaimCard({ active, label, hint, onToggle }) {
+  function toggleFromKeyboard(e) {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    onToggle();
+  }
+
+  return (
+    <div
+      className={"school-card" + (active ? " is-selected" : "")}
+      onClick={onToggle}
+      role="button"
+      tabIndex={0}
+      aria-pressed={active}
+      onKeyDown={toggleFromKeyboard}
+      style={{ marginTop: "var(--sp-3)", borderStyle: "dashed", gap: "var(--sp-3)" }}
+    >
+      <span className="check">{active ? <i className="ti ti-check" /> : null}</span>
+      <div className="grow">
+        <div className="row" style={{ gap: "var(--sp-2)" }}>
+          <span className="name">{label}</span>
+          <span className="chip">15 pts</span>
+        </div>
+        <div className="muted" style={{ marginTop: "var(--sp-1)", fontSize: "var(--fs-sm)" }}>
+          {hint} A correct claim earns 15 points; a wrong claim earns 0.
+        </div>
+      </div>
+    </div>
   );
 }
 

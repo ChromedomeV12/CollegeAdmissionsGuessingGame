@@ -2,6 +2,17 @@
 
 All notable changes to this project. Dates are YYYY-MM-DD.
 
+## 2026-08-19 — Feedback pass: fair retries, practice locks, Home, and global rivals
+
+- **Fair reveal/retry contract.** A first scoring reveal now exposes only Case score, Accuracy, and Time plus a five-second `Retry case` action. Tier hits, school outcomes, final decision, and explanatory details stay hidden until the retry is used or expires. A retry finalizes the second attempt; timeout finalizes the first.
+- **Permanent practice mode.** Finalized profiles are stored in `profile_locks`, marked `Practice` with a Tokyo green completion check, and can no longer write scores. Their profile gains a `Correct choices` tab; practice reveals show full answers immediately with no retry.
+- **Tier claims and partial credit.** Added an explicit “Applicant was not admitted to any T50 University” claim alongside the renamed “Applicant was not admitted to any T20 LAC” claim. Both disable their category's grid and score 15 only when true. Normal band predictions retain the existing 15/9/5/0 distance credit, including lower-but-still-admitted near misses.
+- **Signed-in Home.** Registration/login/reload now land on a dedicated rules/credits screen with Play, authorship, and GitHub links. Reddit submission UI and `public/submission.jsx` were removed from the game.
+- **Maintainer-only import.** Submission mutations/callbacks are disabled unless `SUBMISSIONS_ENABLED=true`; disabled routes return HTTP 503. The consent/ownership/export code remains available for a deliberately enabled maintainer environment.
+- **Global competition.** Removed seasons and season APIs. Leaderboard columns share one aligned grid (`Rank | Player | Avg | Cases | Best`), and new rivals/duel APIs compare head-to-head results on shared completed cases.
+- **Desktop and visual polish.** Active-round topbar remains one row on desktop, the Submit-a-post shortcut is gone, the film/grain layer sits beneath stronger matte glass, and Tokyo Night/Day sculpted-fold wallpaper behavior is preserved.
+- **Verification.** Added/updated scoring tests and end-to-end coverage for Home, both no-admit claims, hidden first-reveal details, one retry, score/practice locks, Correct choices, five finalized cases, global leaderboard shape, rivalry presence, and absence of seasons.
+
 ## 2026-08-19 — Scoring & ranking redesign (0–100, skill-based)
 
 - **Normalized per-case scoring (0–100, never negative).** New pure `public/scoring.js` (`window.SCORING`): school selection = 70 × Jaccard overlap with the admits in view; University tier = distance credit (15/9/5/0); LAC tier = same ladder with the "No LAC Admit" claim folded in (15 correct / 0 wrong). `scoreFor` in `phase4-results.jsx` now composes these; per-school rows remain for display but carry no −2/−5.

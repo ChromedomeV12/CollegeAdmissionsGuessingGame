@@ -102,6 +102,7 @@ function CelebrationBanner({ score, accuracy }) {
   const isGood = score >= 60;
   if (!isGood) return null;
 
+  return (
     <div className="ao-celebrate-banner" style={{
       background: isGreat
         ? "linear-gradient(135deg, var(--accent-ok-bg), var(--accent-info-bg))"
@@ -122,16 +123,17 @@ function CelebrationBanner({ score, accuracy }) {
         </div>
       </div>
     </div>
+  )
 }
 
 // Phase 4 — Results reveal
 
-function scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, noLacClaim) {
+function scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, noUniClaim, noLacClaim) {
   const T = window.TIERS;
   const SC = window.SCORING;
   const admittedSet = new Set(T.getAdmittedSchools(profile).map(T.normSchool));
 
-  const uniAvail = computeAvailable(profile, universityTierPick, "uni");
+  const uniAvail = computeAvailable(profile, noUniClaim ? null : universityTierPick, "uni");
   const lacAvail = computeAvailable(profile, noLacClaim ? null : lacTierPick, "lac");
   const visible = [...uniAvail.all, ...lacAvail.all];
 
@@ -156,8 +158,8 @@ function scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, no
 
   const uniActualIdx = actualBandIndex(T.UNI_TIER_LIST, "uni");
   const lacActualIdx = actualBandIndex(T.LAC_TIER_LIST, "lac");
-  const hasLacAdmit = T.getAdmittedSchools(profile).some(n => T.schoolKind(n) === "lac");
-
+  const hasUniAdmit = uniActualIdx >= 0;
+  const hasLacAdmit = lacActualIdx >= 0;
   // Per-school rows are kept for display only. Deltas are informational (0);
   // the aggregate selection score comes from SCORING.caseScore's Jaccard, so
   // we never reintroduce per-school -2/-5 deductions.
@@ -177,13 +179,15 @@ function scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, no
   const admittedInViewKeys = visible.filter(s => admittedSet.has(s.key)).map(s => s.key);
 
   const cs = SC.caseScore({
-    uniPickIdx: T.UNI_TIER_LIST.indexOf(universityTierPick),
+    uniPickIdx: noUniClaim ? -1 : T.UNI_TIER_LIST.indexOf(universityTierPick),
     lacPickIdx: noLacClaim ? -1 : T.LAC_TIER_LIST.indexOf(lacTierPick),
+    noUniClaim: !!noUniClaim,
+    hasUniAdmit,
     noLacClaim: !!noLacClaim,
     hasLacAdmit,
     uniActualIdx,
     lacActualIdx,
-    selectedKeys: [...schoolSelections],
+    selectedKeys: visible.filter(s => schoolSelections.has(s.key)).map(s => s.key),
     admittedInViewKeys,
   });
 
@@ -194,6 +198,7 @@ function scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, no
     uniPts: cs.uniPts,
     lacPts: cs.lacPts,
     selectionPts: cs.selectionPts,
+    hasUniAdmit,
     hasLacAdmit,
     uniAvail,
     lacAvail,
@@ -203,14 +208,15 @@ function scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, no
 }
 
 function Phase4Results({
-  profile, universityTierPick, lacTierPick, noLacClaim, schoolSelections,
+  profile, universityTierPick, lacTierPick, noUniClaim, noLacClaim, schoolSelections,
   average, rank, onCommitScore,
-  onTryAgain, onRetry, onRetryExpired, onNext, hasNext, guessStartAt
+  onTryAgain, onRetry, onRetryExpired, onFinalizeScoring, onNext, hasNext,
+  guessStartAt, isPractice, retryUsed
 }) {
-  const { rows, score, accuracy, uniAvail, lacAvail, uniPts, lacPts, selectionPts, hasLacAdmit } =
+  const { rows, score, accuracy, uniAvail, lacAvail, uniPts, lacPts, selectionPts, hasUniAdmit, hasLacAdmit } =
     useMemo(() =>
-      scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, noLacClaim),
-      [profile, universityTierPick, lacTierPick, schoolSelections, noLacClaim]
+      scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, noUniClaim, noLacClaim),
+      [profile, universityTierPick, lacTierPick, schoolSelections, noUniClaim, noLacClaim]
     );
 
   // Guess duration, frozen once at reveal mount (the countdown ticking below
@@ -222,30 +228,24 @@ function Phase4Results({
   const timeMult = elapsedSeconds != null && SC && SC.timeFactor ? SC.timeFactor(elapsedSeconds) : 1;
   const finalScore = elapsedSeconds != null && SC && SC.applyTimeFactor ? SC.applyTimeFactor(score, elapsedSeconds) : score;
 
-  // Retry window: 5s countdown from reveal. Expiry forfeits the retry and
-  // locks the profile (practice-only) via onRetryExpired.
+  const firstScoringReveal = !isPractice && !retryUsed;
   const RETRY_WINDOW_S = 5;
   const [retryLeft, setRetryLeft] = React.useState(RETRY_WINDOW_S);
+  const [showDetails, setShowDetails] = React.useState(!!isPractice);
+  const commitPromise = React.useRef(null);
   const lockNotified = React.useRef(false);
+  const finalizeNotified = React.useRef(false);
+  const retryRequested = React.useRef(false);
 
+  // Practice reveals never write a score. Both scoring attempts commit once;
+  // the retry attempt is finalized only after that Promise resolves.
   React.useEffect(() => {
-    const iv = setInterval(() => setRetryLeft(s => (s > 0 ? s - 1 : 0)), 1000);
-    return () => clearInterval(iv);
-  }, []);
-
-  React.useEffect(() => {
-    if (retryLeft === 0 && !lockNotified.current) {
-      lockNotified.current = true;
-      onRetryExpired && onRetryExpired();
+    if (isPractice) {
+      setShowDetails(true);
+      return;
     }
-  }, [retryLeft]);
-
-  // commit this profile's score on mount / when score recomputes for a new attempt
-  const committed = useRef(false);
-  useEffect(() => {
-    if (committed.current) return;
-    committed.current = true;
-    onCommitScore && onCommitScore(profile.id, finalScore, {
+    if (commitPromise.current) return;
+    commitPromise.current = Promise.resolve().then(() => onCommitScore && onCommitScore(profile.id, finalScore, {
       uniPts,
       lacPts,
       selectionPts,
@@ -253,9 +253,37 @@ function Phase4Results({
       rawScore: score,
       timeSeconds: elapsedSeconds,
       timeFactor: Number(timeMult.toFixed(3)),
-    });
-  }, [profile.id, finalScore]);
+    }));
+  }, [isPractice, profile.id, finalScore]);
 
+  React.useEffect(() => {
+    if (!retryUsed || isPractice || finalizeNotified.current) return;
+    finalizeNotified.current = true;
+    (commitPromise.current || Promise.resolve())
+      .then(() => onFinalizeScoring && onFinalizeScoring())
+      .then(() => setShowDetails(true));
+  }, [retryUsed, isPractice, onFinalizeScoring]);
+
+  React.useEffect(() => {
+    if (!firstScoringReveal) return;
+    const iv = setInterval(() => setRetryLeft(s => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(iv);
+  }, [firstScoringReveal]);
+
+  React.useEffect(() => {
+    if (!firstScoringReveal || retryLeft !== 0 || retryRequested.current || lockNotified.current) return;
+    lockNotified.current = true;
+    (commitPromise.current || Promise.resolve())
+      .then(() => onRetryExpired && onRetryExpired())
+      .then(() => setShowDetails(true));
+  }, [firstScoringReveal, retryLeft, onRetryExpired]);
+
+  async function handleScoringRetry() {
+    if (retryRequested.current) return;
+    retryRequested.current = true;
+    await (commitPromise.current || Promise.resolve());
+    onRetry && onRetry();
+  }
   const actualTier = profile.game_metadata?.actual_school_tier;
   const finalDecision = profile.application_results?.final_decision;
 
@@ -269,14 +297,14 @@ function Phase4Results({
     <div className="fade-in" data-screen-label="04 Reveal">
       <Stepper phase={4} />
 
-      <ProfileCollapsedSummary profile={profile} onExpand={onTryAgain /* re-enter from top */} />
+      {showDetails && <ProfileCollapsedSummary profile={profile} onExpand={onTryAgain} />}
 
       <div className="section-head">
         <h2>The verdict</h2>
         <span className="sub">{profile.id}</span>
       </div>
 
-      <CelebrationBanner score={Math.round(finalScore)} accuracy={accuracy} />
+      {showDetails && <CelebrationBanner score={Math.round(finalScore)} accuracy={accuracy} />}
 
       {/* Score cards */}
       <div className="grid grid-2 stagger" style={{ marginBottom: "var(--sp-5)" }}>
@@ -298,23 +326,33 @@ function Phase4Results({
             selection overlap with admits in view
           </div>
         </div>
+        <div className="card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
+          <div className="label">Time</div>
+          <div className="score-pop" style={{ marginTop: "var(--sp-2)" }}>
+            {elapsedSeconds == null ? "—" : `${elapsedSeconds}s`}
+          </div>
+          <div className="label" style={{ color: "var(--text-tertiary)", marginTop: "var(--sp-2)" }}>
+            {elapsedSeconds == null ? "No timed attempt" : `Score multiplier ×${timeMult.toFixed(2)}`}
+          </div>
+        </div>
       </div>
 
+      {showDetails && <>
       {/* Tier result */}
       <div className="card stagger" style={{ marginBottom: "var(--sp-4)" }}>
         <div className="label" style={{ marginBottom: "var(--sp-3)" }}>Tier results</div>
         <TierResultRow
           kind="University"
-          pick={universityTierPick}
-          hit={uniAvail.hit}
+          pick={noUniClaim ? "Applicant was not admitted to any T50 University" : universityTierPick}
+          hit={noUniClaim ? !hasUniAdmit : uniAvail.hit}
           admits={uniAvail.all.filter(a => uniAvail.admitted.has(a.key)).map(a => a.name)}
           actualTier={actualTier}
         />
         <hr className="sep" />
         <TierResultRow
           kind="LAC"
-          pick={noLacClaim ? "None claimed" : lacTierPick}
-          hit={lacAvail.hit}
+          pick={noLacClaim ? "Applicant was not admitted to any T20 LAC" : lacTierPick}
+          hit={noLacClaim ? !hasLacAdmit : lacAvail.hit}
           admits={lacAvail.all.filter(a => lacAvail.admitted.has(a.key)).map(a => a.name)}
           actualTier={null}
         />
@@ -324,16 +362,23 @@ function Phase4Results({
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
             <span style={{ color: "var(--text-secondary)" }}>
               <i className="ti ti-target-arrow" style={{ marginRight: 6 }} />
-              Reach · university tier
+              {noUniClaim ? "Applicant was not admitted to any T50 University" : "Reach · university tier"}
             </span>
             <span className="num" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-ok-fg)" }}>
               +{uniPts}
             </span>
           </div>
+          {noUniClaim && (
+            <div className="label" style={{ color: "var(--text-tertiary)", padding: "var(--sp-1) 0 var(--sp-2)" }}>
+              {hasUniAdmit
+                ? "Claim was incorrect — applicant had a top-50 university admit"
+                : "Correctly identified no top-50 university admit"}
+            </div>
+          )}
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
             <span style={{ color: "var(--text-secondary)" }}>
               <i className="ti ti-building-monument" style={{ marginRight: 6 }} />
-              {noLacClaim ? "LAC · no admit claimed" : "LAC tier"}
+              {noLacClaim ? "Applicant was not admitted to any T20 LAC" : "LAC tier"}
             </span>
             <span className="num" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-ok-fg)" }}>
               +{lacPts}
@@ -432,16 +477,20 @@ function Phase4Results({
           </div>
         </div>
       )}
+      </>}
 
-      <div className="row" style={{ justifyContent: "space-between", marginTop: "var(--sp-6)" }}>
-        <Btn variant="ghost" onClick={onTryAgain} icon="rotate">Try again</Btn>
-        {retryLeft > 0 && (
-          <Btn variant="ghost" onClick={onRetry} icon="refresh">Retry case ({retryLeft}s)</Btn>
-        )}
-        <Btn onClick={onNext} disabled={!hasNext} iconRight="arrow-right">
-          {hasNext ? "Next profile" : "All profiles played"}
-        </Btn>
-      </div>
+      {showDetails ? (
+        <div className="row" style={{ justifyContent: "space-between", marginTop: "var(--sp-6)" }}>
+          <Btn variant="ghost" onClick={onTryAgain} icon="rotate">Try again</Btn>
+          <Btn onClick={onNext} disabled={!hasNext} iconRight="arrow-right">
+            {hasNext ? "Next profile" : "All profiles played"}
+          </Btn>
+        </div>
+      ) : firstScoringReveal && retryLeft > 0 ? (
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: "var(--sp-6)" }}>
+          <Btn variant="ghost" onClick={handleScoringRetry} icon="refresh">Retry case ({retryLeft}s)</Btn>
+        </div>
+      ) : null}
     </div>
   );
 }
