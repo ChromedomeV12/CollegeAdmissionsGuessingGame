@@ -11,10 +11,10 @@ All notable changes to this project. Dates are YYYY-MM-DD.
 
 ### Tokyo Night/Day visual system
 
-- Added exact Tokyo Night/Tokyo Day CSS token palettes with a persistent signed-in theme toggle (`ao_theme`).
-- Added restrained matte-glass surfaces (cards, topbars, metrics, badges, callouts) with light/dark-aware borders and shadows.
-- Added Tailwind Play CDN with preflight disabled (semantic CSS stays authoritative) and an optional three.js constellation background (`public/background.js`) that is theme-aware, reduced-motion-safe, non-interactive, and fails closed if the CDN/WebGL is unavailable.
-- Added e2e coverage for theme toggle persistence; manual browser verification covers exact tokens, glass blur, canvas layering, and both themes.
+- Added exact Tokyo Night/Tokyo Day CSS anchor palettes with a persistent signed-in theme toggle (`ao_theme`). Intermediate surfaces/borders derive from those anchors via `color-mix()`; unrelated cobalt/paper/vermilion literals were removed.
+- Refined matte-glass surfaces (cards, topbars, metrics, badges, callouts) to retain stronger Tokyo surface identity: 12px blur, increased surface opacity, and light/dark-aware token shadows.
+- Added Tailwind Play CDN with preflight disabled; semantic CSS stays authoritative. The initially-added three.js constellation was removed after visual review — the final backdrop is static (subtle Tokyo grid + blue→magenta→cyan line), with attention redirected to card/button/tab/tier/school microinteractions and reduced-motion-safe transitions.
+- Added e2e coverage for theme toggle persistence; manual browser verification covers every exact palette anchor, derived surfaces, glass blur, transitions, no canvas/three.js, and both themes.
 - Reddit fallback research confirmed HTTP 403 public-JSON blocking on both `www.reddit.com` and `old.reddit.com`; personal cookie export is explicitly prohibited in project guidance.
 
 ## 2026-08-18 — Consent-first content import (Mason's-Code) + review fixes

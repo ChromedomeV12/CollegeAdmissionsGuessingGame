@@ -18,10 +18,10 @@ This project is co-owned and co-developed by ChromedomeV12 (repo owner) and Maso
    - `data/game.db` — SQLite (`better-sqlite3`, WAL) for users, scores, consent receipts, OAuth state hashes, and privately queued Reddit submissions.
 
 ## Theme & visual system
-
-- **Tokyo Night / Tokyo Day**: use the moon/sun button in the signed-in topbar. The choice persists as `ao_theme` in local storage. Exact palette tokens live in `public/styles-v2.css`.
-- **Matte glass**: semantic cards/topbars keep readable token colors while using restrained blur, translucency, borders, and shadows.
-- **Constellation background**: `public/background.js` renders a subtle theme-aware three.js particle field. It is decorative, disables animation under `prefers-reduced-motion`, ignores pointer input, and hides itself if three.js/WebGL cannot initialize.
+- **Tokyo Night / Tokyo Day**: use the moon/sun button in the signed-in topbar. The choice persists as `ao_theme` in local storage. Exact palette anchors and derived web surfaces live in `public/styles-v2.css`.
+- **Palette integrity**: canvas, text, comments and semantic blue/magenta/cyan/green/yellow/red tokens use the supplied Tokyo values exactly; intermediate surfaces and borders are derived with `color-mix()` rather than unrelated hex colors.
+- **Matte glass**: semantic cards/topbars keep strong Tokyo surface identity with restrained 12px blur, higher surface opacity, token borders, and theme-aware shadows.
+- **Static backdrop**: a subtle token grid and blue→magenta→cyan top line provide atmosphere without an animated canvas. Component hover/selection/reveal transitions use short 190ms transform/opacity/color motion and respect `prefers-reduced-motion`.
 - Tailwind Play CDN is configured with preflight disabled for no-build utility classes; the existing semantic CSS remains authoritative.
 
 ### API surface
@@ -90,7 +90,7 @@ Bulk subreddit scraping and arbitrary `--url` imports are disabled. See [Consent
 - **Editorial dashboard** — ownership verification plus export (`npm run export-verified`) is implemented, but there is still no web UI for the approve step; it is CLI-only (`npm run approve`).
 - **Reddit app review** — Reddit may require review or approval before public distribution or higher-volume API access when the OAuth path is used; the edit-code fallback avoids the official API entirely but is weaker against adversarial proof.
 - **Reddit public JSON blocking** — verified on 2026-08-19: `www.reddit.com` and `old.reddit.com` returned HTTP 403 from browser and server-side requests, even with a browser-like User-Agent. Do not bypass this by exporting personal cookies; use approved API access, a dedicated throwaway test profile for one-off diagnostics, or a manual content-paste workflow.
-- **Runtime frontend CDNs** — Tailwind Play CDN and three.js CDN fit the current no-build architecture, but a production deployment should pin/bundle them via a real build pipeline (Vite/Tailwind CLI) to remove runtime CDN and Play-CDN risk.
+- **Runtime frontend CDN** — Tailwind Play CDN fits the current no-build architecture, but a production deployment should pin/bundle Tailwind via a real build pipeline (Vite/Tailwind CLI) to remove runtime Play-CDN risk.
 - **Legacy seed consent** — the eight current seed cases predate the new proof flow. Replace them with consented or synthetic cases before a broad public launch.
 - `public/uploads/` still holds early prototype artifacts (`sample.jsonl`, original scraper prompt) — candidates for pruning.
 

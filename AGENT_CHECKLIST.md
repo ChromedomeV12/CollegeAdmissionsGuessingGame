@@ -221,11 +221,11 @@ Capture one screenshot per phase plus the auth and leaderboard screens. Save to 
 - **Invocation**: screenshot the leaderboard screen.
 - **Look for**: "Global leaderboard", season selector, rivalry panel, the run's user row highlighted with a `you` tag after five cases, games count, average and best.
 
-### Check 6.8 — Tokyo theme, glass, and background
-- **Invocation**: while signed in, click `[aria-label="Toggle theme"]`; assert `document.documentElement.dataset.theme` and `localStorage.ao_theme` change; reload and assert persistence. Capture Tokyo Night and Tokyo Day screenshots. Inspect `.card` computed style and `#ao-bg`.
-- **Look for**: exact Night background `#1a1b26` / foreground `#c0caf5`; exact Day background `#e1e2e7` / foreground `#343b58`; readable matte-glass cards (`backdrop-filter` blur), no horizontal overflow, and a non-interactive `#ao-bg` (`pointer-events: none`). If three.js/WebGL is unavailable, gameplay must remain usable with the CSS background.
+### Check 6.8 — Tokyo theme and matte glass
+- **Invocation**: while signed in, click `[aria-label="Toggle theme"]`; assert `document.documentElement.dataset.theme` and `localStorage.ao_theme` change; reload and assert persistence. Capture Tokyo Night and Tokyo Day screenshots. Inspect `.card` computed style and confirm no `#ao-bg` or `window.THREE` dependency exists.
+- **Look for**: exact Night background `#1a1b26` / foreground `#c0caf5`; exact Day background `#e1e2e7` / foreground `#343b58`; exact supplied semantic colors; readable Tokyo-tinted matte-glass cards (`backdrop-filter: blur(12px) saturate(1.25)`), blue→magenta→cyan static top line, smooth short control/card transitions, no animated backdrop and no horizontal overflow.
 
-- **PASS (6.1–6.8)**: each screenshot exists and shows the expected screen with no obvious layout breakage (overflow, blank card, missing heading, unreadable theme). Record paths and computed-style evidence.
+- **PASS (6.1–6.8)**: each screenshot exists and shows the expected screen with no obvious layout breakage, off-palette surfaces, unreadable theme, or continuous ambient animation. Record paths and computed-style evidence.
 
 ---
 
