@@ -155,6 +155,25 @@ function computeAvailable(profile, tier, kind) {
 }
 
 // ─── Phase3School ─────────────────────────────────────────────────────────────
+// Informational per-phase countdown for the time-bonus window.
+// Display only — actual scoring uses the app-level guessStartAt timer.
+function TimeBonusChip() {
+  const [elapsed, setElapsed] = React.useState(0);
+  React.useEffect(() => {
+    const startedAt = Date.now();
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const state = elapsed <= 30 ? "full" : elapsed >= 120 ? "floor" : "shrinking";
+  const kind = state === "full" ? "warn" : state === "shrinking" ? "info" : "neutral";
+  const fade = state === "full" ? 1 : Math.max(0.55, 1 - 0.45 * (elapsed - 30) / 90);
+  return (
+    <span style={{ marginLeft: "auto", opacity: fade, transition: "opacity .6s" }}>
+      <Badge kind={kind} icon="clock">Time bonus · {state}</Badge>
+    </span>
+  );
+}
+
 function Phase3School({
   profile, universityTierPick, lacTierPick, noLacClaim,
   schoolSelections, setSchoolSelections, onReveal, onBack
@@ -180,6 +199,7 @@ function Phase3School({
       <div className="section-head">
         <h2>Which ones did they get in?</h2>
         <span className="sub">Tap the schools you think were admits.</span>
+        <TimeBonusChip />
       </div>
 
       <div className="row" style={{ flexWrap: "wrap", gap: "var(--sp-3)", marginBottom: "var(--sp-4)" }}>

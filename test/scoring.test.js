@@ -168,3 +168,64 @@ test("caseScore score is always within 0..100 across varied inputs", () => {
     assert.equal(r.score, r.uniPts + r.lacPts + r.selectionPts);
   }
 });
+
+test("timeFactor is exposed as a function on SCORING", () => {
+  assert.equal(typeof SCORING.timeFactor, "function");
+  assert.equal(typeof SCORING.applyTimeFactor, "function");
+});
+
+test("timeFactor returns 1.0 at seconds <= grace (30)", () => {
+  assert.equal(SCORING.timeFactor(0), 1.0);
+  assert.equal(SCORING.timeFactor(30), 1.0);
+  assert.equal(SCORING.timeFactor(10), 1.0);
+  assert.equal(SCORING.timeFactor(30, {}), 1.0);
+});
+
+test("timeFactor returns 0.7 at seconds >= cap (120)", () => {
+  assert.equal(SCORING.timeFactor(120), 0.7);
+  assert.equal(SCORING.timeFactor(1000), 0.7);
+});
+
+test("timeFactor is monotonic non-increasing and interpolates between grace and cap", () => {
+  const vals = [0, 30, 45, 60, 75, 90, 105, 120, 200].map((s) => SCORING.timeFactor(s));
+  for (let i = 1; i < vals.length; i++) {
+    assert.ok(vals[i] <= vals[i - 1] + 1e-12, `not monotonic at i=${i}: ${vals[i]} > ${vals[i - 1]}`);
+  }
+  // 30 -> 1.0, 120 -> 0.7, midpoint 75 -> ~0.85.
+  assert.equal(SCORING.timeFactor(30), 1.0);
+  assert.equal(SCORING.timeFactor(120), 0.7);
+  assert.ok(Math.abs(SCORING.timeFactor(75) - 0.85) < 1e-9, `75s factor ~0.85, got ${SCORING.timeFactor(75)}`);
+});
+
+test("timeFactor floor clamp: never below floor", () => {
+  assert.equal(SCORING.timeFactor(120), 0.7);
+  assert.equal(SCORING.timeFactor(1e9), 0.7);
+  // Custom floor should be respected at and past cap.
+  assert.equal(SCORING.timeFactor(200, { grace: 10, cap: 60, floor: 0.5 }), 0.5);
+});
+
+test("applyTimeFactor: score 100 at 10s -> 100 (within grace)", () => {
+  assert.equal(SCORING.applyTimeFactor(100, 10), 100);
+});
+
+test("applyTimeFactor: score 100 at 120s -> 70 (floor)", () => {
+  assert.equal(SCORING.applyTimeFactor(100, 120), 70);
+});
+
+test("applyTimeFactor: score 50 at 75s -> round(50 * 0.85) = 43", () => {
+  // 50 * 0.85 = 42.5 -> round to 43.
+  assert.equal(SCORING.applyTimeFactor(50, 75), Math.round(50 * SCORING.timeFactor(75)));
+  assert.equal(SCORING.applyTimeFactor(50, 75), 43);
+});
+
+test("applyTimeFactor result is always an integer in 0..100", () => {
+  for (const score of [0, 1, 50, 73, 99, 100]) {
+    for (const secs of [0, 10, 30, 45, 60, 75, 90, 105, 120, 1000]) {
+      const r = SCORING.applyTimeFactor(score, secs);
+      assert.ok(
+        Number.isInteger(r) && r >= 0 && r <= 100,
+ `applyTimeFactor out of range: ${r} (score=${score}, secs=${secs})`
+      );
+    }
+  }
+});

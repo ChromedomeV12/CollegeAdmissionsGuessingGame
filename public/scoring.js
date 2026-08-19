@@ -63,9 +63,35 @@ window.SCORING = (function () {
     };
   }
 
+  // Time-based decay factor for a single case. Pure function of elapsed
+  // seconds. With defaults (grace 30, cap 120, floor 0.7):
+  //   seconds <= 30       -> 1.0
+  //   seconds >= 120      -> 0.7
+  //   otherwise linearly interpolated in [0.7, 1.0].
+  // The result is always clamped to [floor, 1.0].
+  function timeFactor(seconds, opts) {
+    const grace = opts && opts.grace != null ? opts.grace : 30;
+    const cap = opts && opts.cap != null ? opts.cap : 120;
+    const floor = opts && opts.floor != null ? opts.floor : 0.7;
+    if (seconds <= grace) return 1.0;
+    if (seconds >= cap) return floor;
+    return 1 - (1 - floor) * (seconds - grace) / (cap - grace);
+  }
+
+  // Apply the time factor to a raw case score: round(score * factor) clamped
+  // to the integer range 0..100. `opts` is forwarded to timeFactor.
+  function applyTimeFactor(score, seconds, opts) {
+    let adjusted = Math.round(score * timeFactor(seconds, opts));
+    if (adjusted < 0) adjusted = 0;
+    if (adjusted > 100) adjusted = 100;
+    return adjusted;
+  }
+
   return {
     jaccard: jaccard,
     tierPoints: tierPoints,
-    caseScore: caseScore
+    caseScore: caseScore,
+    timeFactor: timeFactor,
+    applyTimeFactor: applyTimeFactor
   };
 })();

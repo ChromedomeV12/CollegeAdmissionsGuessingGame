@@ -205,7 +205,7 @@ function scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, no
 function Phase4Results({
   profile, universityTierPick, lacTierPick, noLacClaim, schoolSelections,
   average, rank, onCommitScore,
-  onTryAgain, onNext, hasNext
+  onTryAgain, onRetry, onRetryExpired, onNext, hasNext, guessStartAt
 }) {
   const { rows, score, accuracy, uniAvail, lacAvail, uniPts, lacPts, selectionPts, hasLacAdmit } =
     useMemo(() =>
@@ -213,13 +213,48 @@ function Phase4Results({
       [profile, universityTierPick, lacTierPick, schoolSelections, noLacClaim]
     );
 
+  // Guess duration, frozen once at reveal mount (the countdown ticking below
+  // must not re-measure it). null when no timer was started.
+  const [elapsedSeconds] = React.useState(() =>
+    guessStartAt ? Math.max(0, Math.round((Date.now() - guessStartAt) / 1000)) : null
+  );
+  const SC = window.SCORING;
+  const timeMult = elapsedSeconds != null && SC && SC.timeFactor ? SC.timeFactor(elapsedSeconds) : 1;
+  const finalScore = elapsedSeconds != null && SC && SC.applyTimeFactor ? SC.applyTimeFactor(score, elapsedSeconds) : score;
+
+  // Retry window: 5s countdown from reveal. Expiry forfeits the retry and
+  // locks the profile (practice-only) via onRetryExpired.
+  const RETRY_WINDOW_S = 5;
+  const [retryLeft, setRetryLeft] = React.useState(RETRY_WINDOW_S);
+  const lockNotified = React.useRef(false);
+
+  React.useEffect(() => {
+    const iv = setInterval(() => setRetryLeft(s => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  React.useEffect(() => {
+    if (retryLeft === 0 && !lockNotified.current) {
+      lockNotified.current = true;
+      onRetryExpired && onRetryExpired();
+    }
+  }, [retryLeft]);
+
   // commit this profile's score on mount / when score recomputes for a new attempt
   const committed = useRef(false);
   useEffect(() => {
     if (committed.current) return;
     committed.current = true;
-    onCommitScore && onCommitScore(profile.id, score);
-  }, [profile.id, score]);
+    onCommitScore && onCommitScore(profile.id, finalScore, {
+      uniPts,
+      lacPts,
+      selectionPts,
+      accuracy,
+      rawScore: score,
+      timeSeconds: elapsedSeconds,
+      timeFactor: Number(timeMult.toFixed(3)),
+    });
+  }, [profile.id, finalScore]);
 
   const actualTier = profile.game_metadata?.actual_school_tier;
   const finalDecision = profile.application_results?.final_decision;
@@ -241,17 +276,17 @@ function Phase4Results({
         <span className="sub">{profile.id}</span>
       </div>
 
-      <CelebrationBanner score={score} accuracy={accuracy} />
+      <CelebrationBanner score={Math.round(finalScore)} accuracy={accuracy} />
 
       {/* Score cards */}
       <div className="grid grid-2 stagger" style={{ marginBottom: "var(--sp-5)" }}>
         <div className="card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
           <div className="label">Case score</div>
           <div className="score-pop" style={{ marginTop: "var(--sp-2)", color: "var(--text-primary)" }}>
-            <AnimatedNum value={score} format={n => String(Math.round(n))} />
+            <AnimatedNum value={Math.round(finalScore)} format={n => String(Math.round(n))} />
           </div>
           <div className="label" style={{ color: "var(--text-tertiary)", marginTop: "var(--sp-2)" }}>
-            from this profile · out of 100
+            from this profile · out of 100{timeMult < 1 ? " · after time adjustment" : ""}
           </div>
         </div>
         <div className="card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
@@ -320,6 +355,17 @@ function Phase4Results({
               +{selectionPts}
             </span>
           </div>
+          {elapsedSeconds != null && (
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
+              <span style={{ color: "var(--text-secondary)" }}>
+                <i className="ti ti-clock" style={{ marginRight: 6 }} />
+                Time · {elapsedSeconds}s
+              </span>
+              <span className="num" style={{ fontFamily: "var(--font-mono)", color: "var(--text-tertiary)" }}>
+                ×{timeMult.toFixed(2)}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -381,7 +427,7 @@ function Phase4Results({
           <div className="row" style={{ marginTop: "var(--sp-4)", justifyContent: "space-between", flexWrap: "wrap", gap: "var(--sp-2)" }}>
             <span className="label" style={{ color: "var(--text-tertiary)" }}>This case contributed</span>
             <span className="num" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-ok-fg)" }}>
-              {score}/100
+              {Math.round(finalScore)}/100
             </span>
           </div>
         </div>
@@ -389,6 +435,9 @@ function Phase4Results({
 
       <div className="row" style={{ justifyContent: "space-between", marginTop: "var(--sp-6)" }}>
         <Btn variant="ghost" onClick={onTryAgain} icon="rotate">Try again</Btn>
+        {retryLeft > 0 && (
+          <Btn variant="ghost" onClick={onRetry} icon="refresh">Retry case ({retryLeft}s)</Btn>
+        )}
         <Btn onClick={onNext} disabled={!hasNext} iconRight="arrow-right">
           {hasNext ? "Next profile" : "All profiles played"}
         </Btn>

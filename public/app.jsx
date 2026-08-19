@@ -36,7 +36,7 @@ function AvgRankChip({ rank, average }) {
   );
 }
 
-function Phase0Menu({ profiles, onSelectProfile, scoresByProfile }) {
+function Phase0Menu({ profiles, onSelectProfile, scoresByProfile, lockedProfiles }) {
   const completed = profiles.filter(profile => scoresByProfile[profile.id] !== undefined).length;
   return (
     <div className="fade-in" data-screen-label="00 Menu">
@@ -63,6 +63,7 @@ function Phase0Menu({ profiles, onSelectProfile, scoresByProfile }) {
         {profiles.map((p, i) => {
           const score = scoresByProfile[p.id];
           const hasPlayed = score !== undefined;
+          const isLocked = lockedProfiles && lockedProfiles.has(p.id);
           const num = String(i + 1).padStart(2, "0");
           const kind = hasPlayed
             ? (score > 0 ? "ok" : score < 0 ? "danger" : "neutral")
@@ -73,7 +74,7 @@ function Phase0Menu({ profiles, onSelectProfile, scoresByProfile }) {
               className="card school-card"
               role="button"
               tabIndex={0}
-              aria-label={`Select applicant ${num}, ${p.id}${hasPlayed ? `, played, ${score} points` : ", not yet played"}`}
+              aria-label={`Select applicant ${num}, ${p.id}${hasPlayed ? `, played, ${score} points` : ", not yet played"}${isLocked ? ", practice only" : ""}`}
               data-card-num={num}
               aria-pressed={hasPlayed ? "true" : "false"}
               onClick={() => onSelectProfile(i)}
@@ -96,6 +97,9 @@ function Phase0Menu({ profiles, onSelectProfile, scoresByProfile }) {
                 <span className="check" aria-hidden="true">
                   {hasPlayed && <i className="ti ti-check" style={{ fontSize: "var(--fs-xs)" }} />}
                 </span>
+                {isLocked && (
+                  <Badge icon="lock">Practice</Badge>
+                )}
                 {hasPlayed ? (
                   <Badge kind={kind} icon={score > 0 ? "trophy" : null}>{score} pts</Badge>
                 ) : (
@@ -126,6 +130,12 @@ function App() {
   const [showLeaderboard, setShowLeaderboard] = React.useState(false);
   const [showSubmission, setShowSubmission] = React.useState(() => new URLSearchParams(window.location.search).has("submission_status"));
   const [fullProfile, setFullProfile] = React.useState(null);
+  // Timestamp (ms) of the last phase1→phase2 transition; phase 4 measures the
+  // reveal-time guess duration against it for the time factor. Null in menu.
+  const [guessStartAt, setGuessStartAt] = React.useState(null);
+  // Practice-only profiles (retry window expired or case abandoned). Scores
+  // for these ids are neither POSTed nor counted locally.
+  const [lockedProfiles, setLockedProfiles] = React.useState(new Set());
 
   React.useEffect(() => {
     const stored = getStoredAuth();
@@ -156,6 +166,15 @@ function App() {
       });
   }, [auth]);
 
+  // Practice-only locks for this user, fetched once per session.
+  React.useEffect(() => {
+    if (!auth) return;
+    fetch(`${API_BASE}/api/locks`, { headers: authHeaders(auth.token) })
+      .then(r => (r.ok ? r.json() : []))
+      .then(ids => { if (Array.isArray(ids)) setLockedProfiles(new Set(ids)); })
+      .catch(() => {});
+  }, [auth]);
+
   const totalPoints = Object.values(scoresByProfile).reduce((a, b) => a + b, 0);
   const cases = Object.keys(scoresByProfile).length;
   const average = cases ? Math.round(totalPoints / cases) : 0;
@@ -175,9 +194,13 @@ function App() {
     setProfileIdx(null);
     setPhase(0);
     setFullProfile(null);
+    setGuessStartAt(null);
+    setLockedProfiles(new Set());
   }
 
   function commitScore(pid, score, breakdown) {
+    // Practice-only profiles: scores no longer count, locally or server-side.
+    if (lockedProfiles.has(pid)) return;
     setScoresByProfile(prev => {
       const best = prev[pid];
       if (best == null || score > best) {
@@ -194,6 +217,20 @@ function App() {
     });
   }
 
+  // Mark a profile practice-only: local badge state immediately, server upsert
+  // fire-and-forget. Permanent per (user, profile) — server upserts on repost.
+  function lockProfile(pid) {
+    if (!pid || lockedProfiles.has(pid)) return;
+    setLockedProfiles(prev => new Set(prev).add(pid));
+    if (auth) {
+      fetch(`${API_BASE}/api/locks`, {
+        method: "POST",
+        headers: authHeaders(auth.token),
+        body: JSON.stringify({ profileId: pid }),
+      }).catch(console.error);
+    }
+  }
+
   function resetForProfile() {
     setPhase(1);
     setUniversityTierPick(null);
@@ -203,9 +240,27 @@ function App() {
     setFullProfile(null);
   }
 
+  // Retry within the 5s window: same case, cleared picks, straight back to
+  // tier selection, fresh guess timer. Explicitly does NOT lock the profile.
+  function handleRetry() {
+    setUniversityTierPick(null);
+    setLacTierPick(null);
+    setSchoolSelections(new Set());
+    setNoLacClaim(false);
+    setFullProfile(null);
+    setGuessStartAt(Date.now());
+    setPhase(2);
+  }
+
   function goNextProfile() {
+    // Leaving a case for the menu (topbar Menu or Next profile) forfeits the
+    // retry window — the profile becomes practice-only.
+    if (profileIdx !== null && profiles && profiles[profileIdx]) {
+      lockProfile(profiles[profileIdx].id);
+    }
     setPhase(0);
     setProfileIdx(null);
+    setGuessStartAt(null);
   }
 
   function handleLockTier() {
@@ -292,7 +347,7 @@ function App() {
             </button>
           </div>
         </header>
-        <LeaderboardScreen username={auth.username} average={average} rank={rank} />
+        <LeaderboardScreen username={auth.username} average={average} rank={rank} token={auth.token} />
       </div>
     );
   }
@@ -334,6 +389,7 @@ function App() {
         <Phase0Menu
           profiles={profiles}
           scoresByProfile={scoresByProfile}
+          lockedProfiles={lockedProfiles}
           onSelectProfile={(idx) => {
             setProfileIdx(idx);
             resetForProfile();
@@ -342,7 +398,7 @@ function App() {
       )}
 
       {phase === 1 && profileIdx !== null && (
-        <Phase1Profile profile={profile} profileIdx={profileIdx} profileCount={profiles.length} onStart={() => setPhase(2)} />
+        <Phase1Profile profile={profile} profileIdx={profileIdx} profileCount={profiles.length} onStart={() => { setGuessStartAt(Date.now()); setPhase(2); }} />
       )}
       {phase === 2 && profileIdx !== null && (
         <Phase2Tier
@@ -367,7 +423,10 @@ function App() {
           profile={fullProfile || profile}
           universityTierPick={universityTierPick} lacTierPick={lacTierPick} noLacClaim={noLacClaim}
           schoolSelections={schoolSelections} average={average} rank={rank}
+          guessStartAt={guessStartAt}
           onCommitScore={commitScore} onTryAgain={resetForProfile}
+          onRetry={handleRetry}
+          onRetryExpired={() => { if (profile) lockProfile(profile.id); }}
           onNext={goNextProfile} hasNext={profileIdx + 1 < profiles.length}
         />
       )}
@@ -375,15 +434,85 @@ function App() {
   );
 }
 
-function LeaderboardScreen({ username, average, rank }) {
+function LeaderboardScreen({ username, average, rank, token }) {
   const [rows, setRows] = React.useState(null);
+  // undefined = seasons not loaded yet; null = seasonless fetch (fallback);
+  // string = explicit season id.
+  const [seasons, setSeasons] = React.useState(null);
+  const [season, setSeason] = React.useState(undefined);
+  const [rivals, setRivals] = React.useState(null);
+  const [rivalInput, setRivalInput] = React.useState("");
+  const [rivalError, setRivalError] = React.useState(null);
+  const [duel, setDuel] = React.useState(null);
 
   React.useEffect(() => {
-    fetch(`${API_BASE}/api/leaderboard`)
+    fetch(`${API_BASE}/api/seasons`)
+      .then(r => r.json())
+      .then(data => {
+        const list = Array.isArray(data?.seasons) ? data.seasons : [];
+        setSeasons(list);
+        setSeason(prev => prev ?? data?.current ?? (list[0] && list[0].id) ?? null);
+      })
+      .catch(err => {
+        console.error(err);
+        setSeasons([]);
+        setSeason(prev => prev ?? null);
+      });
+  }, []);
+
+  React.useEffect(() => {
+    if (season === undefined) return;
+    setRows(null);
+    const url = season
+      ? `${API_BASE}/api/leaderboard?season=${encodeURIComponent(season)}`
+      : `${API_BASE}/api/leaderboard`;
+    fetch(url)
       .then(r => r.json())
       .then(setRows)
       .catch(console.error);
-  }, []);
+  }, [season]);
+
+  React.useEffect(() => {
+    if (!token) return;
+    fetch(`${API_BASE}/api/rivals`, { headers: authHeaders(token) })
+      .then(r => (r.ok ? r.json() : []))
+      .then(data => setRivals(Array.isArray(data) ? data : []))
+      .catch(console.error);
+  }, [token]);
+
+  function addRival() {
+    const name = rivalInput.trim();
+    if (!name || !token) return;
+    setRivalError(null);
+    fetch(`${API_BASE}/api/rivals`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ username: name }),
+    })
+      .then(r => {
+        if (r.status === 404) throw new Error("not-found");
+        if (!r.ok) throw new Error("failed");
+        return r.json();
+      })
+      .then(() => {
+        setRivalInput("");
+        setRivals(prev => {
+          const list = Array.isArray(prev) ? prev.slice() : [];
+          if (!list.some(x => x.username === name)) list.push({ username: name });
+          return list;
+        });
+      })
+      .catch(err => setRivalError(err && err.message === "not-found" ? `No player named "${name}".` : "Could not add that rival."));
+  }
+
+  function openDuel(name) {
+    if (!token) return;
+    setDuel({ username: name, data: null });
+    fetch(`${API_BASE}/api/duel/${encodeURIComponent(name)}`, { headers: authHeaders(token) })
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error("failed"))))
+      .then(data => setDuel({ username: name, data }))
+      .catch(() => setDuel({ username: name, data: { common: [] } }));
+  }
 
   return (
     <main className="fade-in" style={{ maxWidth: 640, margin: "0 auto" }}>
@@ -402,7 +531,14 @@ function LeaderboardScreen({ username, average, rank }) {
           <span className="eyebrow">Standings</span>
           <h2>Global leaderboard</h2>
         </div>
-        <span className="muted" style={{ fontSize: "var(--fs-sm)" }}>≥ 5 cases to qualify</span>
+        <div className="row" style={{ gap: "var(--sp-3)", alignItems: "center", flexWrap: "nowrap" }}>
+          {seasons && seasons.length > 0 && (
+            <select aria-label="Season" value={season ?? ""} onChange={(e) => setSeason(e.target.value)}>
+              {seasons.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+          )}
+          <span className="muted" style={{ fontSize: "var(--fs-sm)", whiteSpace: "nowrap" }}>≥ 5 cases to qualify</span>
+        </div>
       </div>
 
       {!rows && <CalmLoading label="Loading standings…" minHeight="20vh" />}
@@ -453,6 +589,97 @@ function LeaderboardScreen({ username, average, rank }) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      <div className="section-head" style={{ marginTop: "var(--sp-6)" }}>
+        <div className="title-block">
+          <span className="eyebrow">Rivalry</span>
+          <h2>Rivals</h2>
+        </div>
+        <span className="muted" style={{ fontSize: "var(--fs-sm)" }}>Head-to-head on shared cases</span>
+      </div>
+
+      <div className="card">
+        <form
+          className="row"
+          style={{ gap: "var(--sp-2)", flexWrap: "nowrap", alignItems: "center" }}
+          onSubmit={(e) => { e.preventDefault(); addRival(); }}
+        >
+          <input
+            type="text"
+            value={rivalInput}
+            onChange={(e) => setRivalInput(e.target.value)}
+            placeholder="Add a rival by username"
+            aria-label="Rival username"
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          <Btn onClick={addRival} icon="user-plus" disabled={!rivalInput.trim()}>Add rival</Btn>
+        </form>
+        {rivalError && (
+          <div className="label" role="alert" style={{ color: "var(--text-danger)", marginTop: "var(--sp-2)" }}>{rivalError}</div>
+        )}
+        {rivals && rivals.length === 0 && !rivalError && (
+          <p className="muted" style={{ margin: "var(--sp-3) 0 0", fontSize: "var(--fs-sm)" }}>
+            No rivals yet — add a player's username, then open a duel to compare cases you've both played.
+          </p>
+        )}
+        {rivals && rivals.length > 0 && (
+          <div style={{ marginTop: "var(--sp-3)", borderTop: "0.5px solid var(--border-1)" }}>
+            {rivals.map(r => (
+              <div key={r.username} className="row" style={{ justifyContent: "space-between", padding: "var(--sp-2) 0", flexWrap: "nowrap", borderBottom: "0.5px solid var(--border-1)" }}>
+                <span style={{ fontWeight: 500 }}>
+                  <i className="ti ti-swords" aria-hidden="true" style={{ marginRight: 6, color: "var(--text-tertiary)" }} />
+                  {r.username}
+                </span>
+                <Btn variant="ghost" onClick={() => openDuel(r.username)} iconRight="arrow-right">Duel</Btn>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {duel && (
+        <div className="card" style={{ padding: 0, overflow: "hidden", marginTop: "var(--sp-4)" }}>
+          <div className="row" style={{ padding: "var(--sp-3) var(--sp-5)", borderBottom: "1px solid var(--border-1)", justifyContent: "space-between", flexWrap: "nowrap" }}>
+            <span className="label">Duel · you vs {duel.username}</span>
+            <Btn variant="ghost" onClick={() => setDuel(null)} icon="x" ariaLabel="Close duel view" />
+          </div>
+          {!duel.data && <CalmLoading label="Loading duel…" minHeight="15vh" />}
+          {duel.data && duel.data.common.length === 0 && (
+            <p className="muted" style={{ margin: 0, padding: "var(--sp-5)", fontSize: "var(--fs-sm)", textAlign: "center" }}>
+              No shared cases yet — play the same profiles to compare.
+            </p>
+          )}
+          {duel.data && duel.data.common.length > 0 && (
+            <>
+              <div className="row" style={{ padding: "var(--sp-2) var(--sp-5)", borderBottom: "1px solid var(--border-1)", flexWrap: "nowrap", gap: "var(--sp-3)", color: "var(--text-tertiary)", fontSize: "var(--fs-xs)" }}>
+                <span className="grow">Case</span>
+                <span style={{ minWidth: 44, textAlign: "right" }}>You</span>
+                <span style={{ minWidth: 44, textAlign: "right" }}>{duel.username}</span>
+              </div>
+              {duel.data.common.map((c, i) => {
+                const youWin = c.you > c.them;
+                const theyWin = c.them > c.you;
+                return (
+                  <div
+                    key={c.profileId}
+                    className="row"
+                    style={{
+                      padding: "var(--sp-3) var(--sp-5)",
+                      borderBottom: i < duel.data.common.length - 1 ? "1px solid var(--border-1)" : "none",
+                      flexWrap: "nowrap",
+                      gap: "var(--sp-3)",
+                    }}
+                  >
+                    <span className="grow" style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.profileId}</span>
+                    <span className="num" style={{ minWidth: 44, textAlign: "right", fontWeight: youWin ? 700 : 400, color: youWin ? "var(--accent-ok-fg)" : "inherit" }}>{c.you}</span>
+                    <span className="num" style={{ minWidth: 44, textAlign: "right", fontWeight: theyWin ? 700 : 400, color: theyWin ? "var(--accent-danger-fg)" : "inherit" }}>{c.them}</span>
+                  </div>
+                );
+              })}
+            </>
+          )}
         </div>
       )}
     </main>

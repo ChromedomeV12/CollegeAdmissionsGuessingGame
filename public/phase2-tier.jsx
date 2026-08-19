@@ -25,6 +25,25 @@ function ProfileCollapsedSummary({ profile, onExpand }) {
   );
 }
 
+// Informational per-phase countdown for the time-bonus window.
+// Display only — actual scoring uses the app-level guessStartAt timer.
+function TimeBonusChip() {
+  const [elapsed, setElapsed] = React.useState(0);
+  React.useEffect(() => {
+    const startedAt = Date.now();
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const state = elapsed <= 30 ? "full" : elapsed >= 120 ? "floor" : "shrinking";
+  const kind = state === "full" ? "warn" : state === "shrinking" ? "info" : "neutral";
+  const fade = state === "full" ? 1 : Math.max(0.55, 1 - 0.45 * (elapsed - 30) / 90);
+  return (
+    <span style={{ marginLeft: "auto", opacity: fade, transition: "opacity .6s" }}>
+      <Badge kind={kind} icon="clock">Time bonus · {state}</Badge>
+    </span>
+  );
+}
+
 function Phase2Tier({
   profile,
   universityTierPick, setUniversityTierPick,
@@ -46,6 +65,7 @@ function Phase2Tier({
           <h2>Predict the ceiling</h2>
         </div>
         <span className="sub">Pick one university tier and one LAC tier.</span>
+        <TimeBonusChip />
       </div>
 
       <div className="callout" style={{ marginBottom: "var(--sp-4)" }}>

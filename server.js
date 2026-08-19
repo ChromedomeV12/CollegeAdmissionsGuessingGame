@@ -101,6 +101,28 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS profile_locks (
+    user_id INTEGER NOT NULL,
+    profile_id TEXT NOT NULL,
+    locked_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, profile_id),
+    FOREIGN KEY (user_id) REFERENCES users (id)
+  );
+
+  CREATE TABLE IF NOT EXISTS rivals (
+    user_id INTEGER NOT NULL,
+    rival_username TEXT NOT NULL,
+    PRIMARY KEY (user_id, rival_username),
+    FOREIGN KEY (user_id) REFERENCES users (id)
+  );
+
+  CREATE TABLE IF NOT EXISTS seasons (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    starts_at TEXT,
+    ends_at TEXT
+  );
 `);
 
 // ─── Schema Migration: fallback code columns ─────────────────────────────────
@@ -126,6 +148,23 @@ const SCORING_VERSION = "2";
       ON CONFLICT(key) DO UPDATE SET value = excluded.value
     `).run(SCORING_VERSION);
   }
+}
+
+// ─── Schema Migration: scores.season column ───────────────────────────────────
+const CURRENT_SEASON = "2026-fall";
+{
+  const cols = db.prepare("PRAGMA table_info(scores)").all().map(c => c.name);
+  if (!cols.includes("season")) {
+    db.exec("ALTER TABLE scores ADD COLUMN season TEXT NOT NULL DEFAULT '2026-fall'");
+  }
+}
+
+// ─── Seed current season row ──────────────────────────────────────────────────
+{
+  db.prepare(`
+    INSERT INTO seasons (id, label, starts_at, ends_at) VALUES (?, ?, NULL, NULL)
+    ON CONFLICT(id) DO NOTHING
+  `).run(CURRENT_SEASON, "2026 Fall");
 }
 
 // ─── Load Profiles ────────────────────────────────────────────────────────────
@@ -652,25 +691,33 @@ app.get("/api/profiles/:id", (req, res) => {
 });
 
 app.post("/api/scores", authenticateToken, (req, res) => {
-  const { profileId, score, breakdown } = req.body;
+  const { profileId, score, breakdown, season } = req.body;
   if (typeof profileId !== 'string' || profileId.length === 0 || profileId.length > 64) {
     return res.status(400).json({ error: "profile_id must be a non-empty string up to 64 characters" });
   }
   if (!Number.isInteger(score) || score < 0 || score > 100) {
     return res.status(400).json({ error: "score must be an integer between 0 and 100" });
   }
+  const scoreSeason = typeof season === 'string' && season.length > 0 ? season : CURRENT_SEASON;
 
   try {
-    // Only update if new score is higher or it doesn't exist
-    const current = db.prepare("SELECT score FROM scores WHERE user_id = ? AND profile_id = ?").get(req.user.id, profileId);
-    
-    if (!current || score > current.score) {
+    // Profile lock: practice-only profiles may not record scores
+    const locked = db.prepare("SELECT 1 FROM profile_locks WHERE user_id = ? AND profile_id = ?").get(req.user.id, profileId);
+    if (locked) {
+      return res.status(409).json({ error: "Profile locked — practice only" });
+    }
+
+    // Keep-higher within (user, profile, season)
+    const current = db.prepare("SELECT score, season FROM scores WHERE user_id = ? AND profile_id = ?").get(req.user.id, profileId);
+    const shouldUpdate = !current || (current.season === scoreSeason ? score > current.score : true);
+
+    if (shouldUpdate) {
       db.prepare(`
-        INSERT INTO scores (user_id, profile_id, score, breakdown) 
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(user_id, profile_id) DO UPDATE SET 
-        score=excluded.score, breakdown=excluded.breakdown
-      `).run(req.user.id, profileId, score, breakdown ? JSON.stringify(breakdown) : null);
+        INSERT INTO scores (user_id, profile_id, score, breakdown, season)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, profile_id) DO UPDATE SET
+        score=excluded.score, breakdown=excluded.breakdown, season=excluded.season
+      `).run(req.user.id, profileId, score, breakdown ? JSON.stringify(breakdown) : null, scoreSeason);
     }
     res.json({ success: true });
   } catch (err) {
@@ -683,6 +730,7 @@ const LEADERBOARD_MIN_GAMES = 5;
 
 app.get("/api/leaderboard", (req, res) => {
   try {
+    const season = typeof req.query.season === 'string' && req.query.season.length > 0 ? req.query.season : CURRENT_SEASON;
     const rows = db.prepare(`
       SELECT u.username,
              COUNT(s.profile_id) AS games,
@@ -690,12 +738,136 @@ app.get("/api/leaderboard", (req, res) => {
              MAX(s.score) AS best
       FROM users u
       JOIN scores s ON u.id = s.user_id
+      WHERE s.season = ?
       GROUP BY u.id
       HAVING games >= ?
       ORDER BY avg DESC
       LIMIT 100
-    `).all(LEADERBOARD_MIN_GAMES);
+    `).all(season, LEADERBOARD_MIN_GAMES);
     res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── API Endpoints: Profile Locks ─────────────────────────────────────────────
+
+app.post("/api/locks", authenticateToken, (req, res) => {
+  const { profileId } = req.body;
+  if (typeof profileId !== 'string' || profileId.length === 0 || profileId.length > 64) {
+    return res.status(400).json({ error: "profileId must be a non-empty string up to 64 characters" });
+  }
+  try {
+    db.prepare(`
+      INSERT INTO profile_locks (user_id, profile_id, locked_at) VALUES (?, ?, ?)
+      ON CONFLICT(user_id, profile_id) DO UPDATE SET locked_at = excluded.locked_at
+    `).run(req.user.id, profileId, new Date().toISOString());
+    res.json({ success: true, locked: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/locks", authenticateToken, (req, res) => {
+  try {
+    const rows = db.prepare("SELECT profile_id FROM profile_locks WHERE user_id = ?").all(req.user.id);
+    res.json(rows.map(r => r.profile_id));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── API Endpoints: Rivals ────────────────────────────────────────────────────
+
+app.post("/api/rivals", authenticateToken, (req, res) => {
+  const { username } = req.body;
+  if (typeof username !== 'string' || username.length === 0) {
+    return res.status(400).json({ error: "username must be a non-empty string" });
+  }
+  try {
+    const rival = db.prepare("SELECT id FROM users WHERE username = ?").get(username);
+    if (!rival) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    db.prepare(`
+      INSERT INTO rivals (user_id, rival_username) VALUES (?, ?)
+      ON CONFLICT(user_id, rival_username) DO NOTHING
+    `).run(req.user.id, username);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.delete("/api/rivals/:username", authenticateToken, (req, res) => {
+  try {
+    db.prepare("DELETE FROM rivals WHERE user_id = ? AND rival_username = ?").run(req.user.id, req.params.username);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/rivals", authenticateToken, (req, res) => {
+  try {
+    const rows = db.prepare("SELECT rival_username AS username FROM rivals WHERE user_id = ?").all(req.user.id);
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── API Endpoints: Duel ──────────────────────────────────────────────────────
+
+app.get("/api/duel/:username", authenticateToken, (req, res) => {
+  const rivalUsername = req.params.username;
+  try {
+    const rival = db.prepare("SELECT id FROM users WHERE username = ?").get(rivalUsername);
+    if (!rival) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Best score per profile, current season, for both players
+    const bestPerProfile = (userId) => db.prepare(`
+      SELECT profile_id AS profileId, MAX(score) AS score
+      FROM scores
+      WHERE user_id = ? AND season = ?
+      GROUP BY profile_id
+    `).all(userId, CURRENT_SEASON);
+
+    const youRows = bestPerProfile(req.user.id);
+    const themRows = bestPerProfile(rival.id);
+
+    const youMap = new Map(youRows.map(r => [r.profileId, r.score]));
+    const themMap = new Map(themRows.map(r => [r.profileId, r.score]));
+
+    const you = youRows.map(r => ({ profileId: r.profileId, score: r.score }));
+    const them = themRows.map(r => ({ profileId: r.profileId, score: r.score }));
+    const common = [...youMap.keys()].filter(pid => themMap.has(pid)).map(pid => ({
+      profileId: pid,
+      you: youMap.get(pid),
+      them: themMap.get(pid)
+    }));
+
+    res.json({ you, them, common });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── API Endpoints: Seasons ───────────────────────────────────────────────────
+
+app.get("/api/seasons", (req, res) => {
+  try {
+    const seasons = db.prepare("SELECT id, label FROM seasons ORDER BY id ASC").all();
+    res.json({ current: CURRENT_SEASON, seasons });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal server error" });
