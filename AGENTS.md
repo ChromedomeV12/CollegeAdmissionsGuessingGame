@@ -1,7 +1,7 @@
 # Admissions Oracle - Agent Instructions
 
 ## Architecture & Data Flow
-- **Frontend (`public/`)**: React Single-Page Application compiled in-browser via `@babel/standalone`. No build step (Webpack/Vite).
+- **Frontend (`public/`)**: React Single-Page Application compiled in-browser via `@babel/standalone`. No build step (Webpack/Vite). `styles-v2.css` is the semantic component stylesheet; Tailwind Play CDN is available with preflight disabled; `background.js` adds an optional three.js constellation that must fail closed when the CDN/WebGL is unavailable.
 - **Backend (`server.js`)**: Express server serving static files from `public/` and a single `/api/*` mount. There are **no legacy non-API routes** — every `/register`, `/login`, `/me`, `/profiles` etc. lives under `/api/`.
 - **Hybrid Storage**:
   - **Static Content (`data/profiles.jsonl`)**: Read-only to the server. Loaded into memory on startup and reloaded on each `/api/profiles` request. The **single source of truth** for profile data — served to the frontend only via `GET /api/profiles` (and `/api/profiles/:id` for full records).
@@ -20,6 +20,7 @@
 2. **Verify ownership** — one of two paths, auto-selected by config:
    - **OAuth** (when `REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET`/`REDDIT_REDIRECT_URI` are set): user completes a temporary `identity read` Reddit grant; `server.js` compares `/api/v1/me` with the post author. Reddit tokens are never stored.
    - **Edit-code fallback** (otherwise): the server issues a local `ORACLE-[A-Z0-9]{6}` receipt code (no Reddit network call) and sets `awaiting_fallback_code`. The user edits the code into their Reddit post, then `POST /api/submissions/:id/confirm-fallback` fetches the post and checks the body for the code. A miss is retryable in place (`failure_reason='edit_code_not_found'`); expiry → `verification_expired`.
+   - **Operational limit**: the public `.json` request is best-effort. Reddit currently returns HTTP 403 "blocked by network security" from this development environment for both `www.reddit.com` and `old.reddit.com`, including browser-like User-Agents. Never import/copy a developer's personal browser cookies into WSL or automate a personal Reddit profile to bypass the block.
    Either path lands verified submissions in `verified_pending_review`. `GET /api/submissions/config` reports `redditOAuthConfigured` and `fallbackEnabled: true`.
 3. **Export verified drafts**: `npm run export-verified` reads `verified_pending_review` rows from `data/game.db`, appends each to `data/queue.jsonl` as a `{ draft: true, draftKind: 'reddit-consent', consent, source }` entry, and flips the row to `exported_pending_approval`. Supports `--dry-run`, `--all` (include already-exported rows), and `--db <path>` (test on a temp copy). This is the only writer that connects verified consent submissions to the game.
 4. **Approve**: `npm run approve` reviews `data/queue.jsonl`. When `OPENROUTER_API_KEY` is set, each draft is structured into a full `GameRecord` via the LLM (using the draft's consent post body as the source text); without the key, approved drafts are written as defensive `GameRecord` scaffolds with empty fields that render as empty states. Approved records land in `data/profiles.jsonl`. `OPENROUTER_API_KEY` is optional — it only affects LLM structuring during approve, not verification or export.
@@ -28,6 +29,7 @@
 
 ## Code Conventions & Gotchas
 - **Defensive UI Rendering**: When modifying `public/phase*.jsx` components, **ALWAYS use optional chaining (`?.`)** and fallback defaults (`|| {}`, `|| []`) when accessing profile data (e.g., `test_scores`, `academic_profile`, `extracurriculars`). The LLM scraper is imperfect; missing data must render empty states, not crash the React tree. Hardening is already applied to `phase1-profile.jsx`, `phase2-tier.jsx`, `phase4-results.jsx`.
+- **Theme System**: Tokyo Night/Day tokens live only in `public/styles-v2.css`; the toggle in `app.jsx` persists `ao_theme` and sets `document.documentElement.dataset.theme`. Use existing tokens (`--bg-*`, `--text-*`, `--accent-*`, `--border-*`) — never add dark-only hardcoded UI colors. Decorative chart/confetti/school-brand colors are allowed. `#ao-bg` is pointer-events-none and below `#root`; it must never gate gameplay.
 - **Scoring Logic (`public/scoring.js` + `phase4-results.jsx`)**: every case scores 0–100, never negative.
   - School selection: up to **70** — Jaccard overlap `|selected ∩ admitted| / |selected ∪ admitted|` over the visible schools.
   - University tier: up to **15** — distance credit (correct 15, off-by-one 9, off-by-two 5, else 0).

@@ -215,22 +215,26 @@ Capture one screenshot per phase plus the auth and leaderboard screens. Save to 
 
 ### Check 6.6 — Phase 4 reveal
 - **Invocation**: screenshot `[data-screen-label="04 Reveal"]` after the score animation settles.
-- **Look for**: "The verdict", the large "Points earned" number and "Accuracy" percentage, tier-results row, school-by-school breakdown.
+- **Look for**: "The verdict", the large 0–100 case score and "Accuracy" percentage, tier-results row, time multiplier, retry countdown, school-by-school breakdown.
 
 ### Check 6.7 — Leaderboard
 - **Invocation**: screenshot the leaderboard screen.
-- **Look for**: "Global leaderboard", the run's user row highlighted with a `you` tag, games count and points total.
+- **Look for**: "Global leaderboard", season selector, rivalry panel, the run's user row highlighted with a `you` tag after five cases, games count, average and best.
 
-- **PASS (6.1–6.7)**: each screenshot exists and shows the expected screen with no obvious layout breakage (overflow, blank card, missing heading). Record the file path as evidence.
+### Check 6.8 — Tokyo theme, glass, and background
+- **Invocation**: while signed in, click `[aria-label="Toggle theme"]`; assert `document.documentElement.dataset.theme` and `localStorage.ao_theme` change; reload and assert persistence. Capture Tokyo Night and Tokyo Day screenshots. Inspect `.card` computed style and `#ao-bg`.
+- **Look for**: exact Night background `#1a1b26` / foreground `#c0caf5`; exact Day background `#e1e2e7` / foreground `#343b58`; readable matte-glass cards (`backdrop-filter` blur), no horizontal overflow, and a non-interactive `#ao-bg` (`pointer-events: none`). If three.js/WebGL is unavailable, gameplay must remain usable with the CSS background.
+
+- **PASS (6.1–6.8)**: each screenshot exists and shows the expected screen with no obvious layout breakage (overflow, blank card, missing heading, unreadable theme). Record paths and computed-style evidence.
 
 ---
 
 ## 7. Automated gate
 
 ### Check 7.1 — `npm test` passes
-- **Purpose**: the self-contained Puppeteer harness passes end-to-end (spawns its own server on a free port, registers a throwaway `e2e_<timestamp>` user, drives all four phases, asserts the leaderboard row).
-- **Invocation**: `npm test` (runs `node e2e_test.cjs`, `package.json:7`). Do not set `PORT` — the harness picks a free port itself. It writes to the real `data/game.db` with unique usernames, so it is safe to re-run.
-- **PASS**: every step prints `[e2e] PASS …` and the run ends with `[e2e] ALL STEPS PASSED` and exit code `0` (`e2e_test.cjs:329`).
+- **Purpose**: the self-contained Puppeteer harness passes end-to-end (spawns its own server on a free port, registers a throwaway `e2e_<timestamp>` user, toggles and persists the theme, drives fallback-code issuance without Reddit network calls, plays five cases, asserts the leaderboard row).
+- **Invocation**: `npm test` (unit tests then `node e2e_test.cjs`). Do not set `PORT` — the harness picks a free port itself. It writes to the real `data/game.db` with unique usernames, so it is safe to re-run.
+- **PASS**: every step prints `[e2e] PASS …` and the run ends with `[e2e] ALL STEPS PASSED` and exit code `0`.
 
 ---
 
@@ -267,5 +271,5 @@ Fill this in as you run each check. Append the screenshot paths and any curl res
 | 4.3 Leaderboard has run user | | |
 | 5.1 Zero pageerrors | | |
 | 5.2 Zero console errors | | |
-| 6.1–6.7 Visual spot-check | | |
+| 6.1–6.8 Visual/theme spot-check | | |
 | 7.1 npm test passes | | |

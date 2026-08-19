@@ -48,6 +48,14 @@ Used automatically when `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, and `REDDIT_
 - A match moves the row to `verified_pending_review` and stores the minimized post snapshot, exactly like the OAuth path. A miss keeps the row in `awaiting_fallback_code` with `failure_reason = 'edit_code_not_found'` — the submitter can retry in place after editing the post.
 - Expiry moves the row to `verification_expired`; the user must re-submit to get a fresh code.
 
+#### Observed public JSON limitation
+
+Testing on 2026-08-19 found that top-level browser navigation and server-side `curl` requests to both `https://www.reddit.com/*.json` and `https://old.reddit.com/*.json` returned HTTP 403 HTML ("blocked by network security"), including requests with a browser-like or descriptive application User-Agent. Therefore edit-code confirmation is **best-effort**: issuing the local code works offline, but the final confirmation cannot succeed when Reddit blocks the public JSON fetch. Treat 403 as an operational outage, not an ownership mismatch.
+
+Do not bypass this by copying a developer's personal Chrome cookies into WSL. Chrome on Windows protects cookies with App-Bound Encryption, and Chrome 136+ ignores remote-debugging switches for the default data directory specifically to prevent cookie extraction. A cookie database copied into Linux is not a portable login session.
+
+If a one-off authenticated diagnostic is approved, use a **dedicated non-default Windows Chrome profile and throwaway Reddit test account**, log in manually, launch Chrome with an explicit non-default `--user-data-dir` and remote-debugging port, then connect Puppeteer over CDP and disconnect after the single test. Never automate the developer's daily profile, persist exported cookies, or mass-scrape. Prefer approved Reddit API access or a manual user-supplied post-text workflow for production. See [Chrome's remote-debugging security change](https://developer.chrome.com/blog/remote-debugging-port) and [Reddit Data API Terms](https://redditinc.com/policies/data-api-terms).
+
 This proves control of the Reddit account at verification time. It does not prove that every statement in the post is true or that third-party material inside the post is licensed.
 
 ### Consent-phishing tradeoff
@@ -116,8 +124,8 @@ Once a submission reaches `verified_pending_review`, it is not yet a playable ca
 
 Before enabling public submissions:
 
-- register a Reddit **web app** and set the callback URI exactly, or decide to run the edit-code fallback (no OAuth credentials) and document that choice to users;
-- confirm whether Reddit requires app review for the intended distribution and volume;
+- register a Reddit **web app** and set the callback URI exactly; if API access is unavailable, treat the edit-code public-JSON path as best-effort and be prepared to disable confirmation or switch to a manual post-text workflow when Reddit returns 403;
+- never deploy personal-cookie extraction or authenticated browser scraping as an API substitute;
 - publish a privacy policy describing Reddit data use, retention, withdrawal, and contact methods;
 - complete a legal review of copyright, publicity, minors' data, and applicable privacy law;
 - replace or re-consent legacy seed cases that predate this ownership flow;

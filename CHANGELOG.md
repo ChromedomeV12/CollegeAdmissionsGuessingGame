@@ -9,6 +9,14 @@ All notable changes to this project. Dates are YYYY-MM-DD.
 - **Backend.** `/api/scores` validates 0–100; `/api/leaderboard` returns `{username, games, avg, best}` ordered by `avg` with a `LEADERBOARD_MIN_GAMES = 5` floor; `SCORING_VERSION = "2"` meta migration wipes incompatible legacy scores once on startup.
 - **Tests.** 12 new `test/scoring.test.js` unit tests (Jaccard, tier distance, case-score composition, no-LAC branches); e2e now plays 5 distinct cases and asserts the new leaderboard shape.
 
+### Tokyo Night/Day visual system
+
+- Added exact Tokyo Night/Tokyo Day CSS token palettes with a persistent signed-in theme toggle (`ao_theme`).
+- Added restrained matte-glass surfaces (cards, topbars, metrics, badges, callouts) with light/dark-aware borders and shadows.
+- Added Tailwind Play CDN with preflight disabled (semantic CSS stays authoritative) and an optional three.js constellation background (`public/background.js`) that is theme-aware, reduced-motion-safe, non-interactive, and fails closed if the CDN/WebGL is unavailable.
+- Added e2e coverage for theme toggle persistence; manual browser verification covers exact tokens, glass blur, canvas layering, and both themes.
+- Reddit fallback research confirmed HTTP 403 public-JSON blocking on both `www.reddit.com` and `old.reddit.com`; personal cookie export is explicitly prohibited in project guidance.
+
 ## 2026-08-18 — Consent-first content import (Mason's-Code) + review fixes
 
 ### Ownership-verified import (dual mode)

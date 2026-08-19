@@ -17,6 +17,13 @@ This project is co-owned and co-developed by ChromedomeV12 (repo owner) and Maso
    - `data/profiles.jsonl` — static game content. Read-only to the server, loaded into memory at startup. Replace the file to update content.
    - `data/game.db` — SQLite (`better-sqlite3`, WAL) for users, scores, consent receipts, OAuth state hashes, and privately queued Reddit submissions.
 
+## Theme & visual system
+
+- **Tokyo Night / Tokyo Day**: use the moon/sun button in the signed-in topbar. The choice persists as `ao_theme` in local storage. Exact palette tokens live in `public/styles-v2.css`.
+- **Matte glass**: semantic cards/topbars keep readable token colors while using restrained blur, translucency, borders, and shadows.
+- **Constellation background**: `public/background.js` renders a subtle theme-aware three.js particle field. It is decorative, disables animation under `prefers-reduced-motion`, ignores pointer input, and hides itself if three.js/WebGL cannot initialize.
+- Tailwind Play CDN is configured with preflight disabled for no-build utility classes; the existing semantic CSS remains authoritative.
+
 ### API surface
 
 | Method | Path | Auth | Purpose |
@@ -54,7 +61,7 @@ cp .env.example .env   # then edit: set JWT_SECRET (generation one-liner inside)
 npm run dev            # http://localhost:3005
 ```
 
-`.env` keys: `PORT`, `JWT_SECRET`, and optionally `REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET`/`REDDIT_REDIRECT_URI` (OAuth ownership verification) plus `REDDIT_USER_AGENT` and `OPENROUTER_API_KEY` (optional LLM structuring during `npm run approve`). Create a Reddit **web app** and register the redirect URI exactly (production must use HTTPS). Without the `REDDIT_*` credentials the app automatically uses the edit-code fallback — no Reddit app registration required.
+`.env` keys: `PORT`, `JWT_SECRET`, and optionally `REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET`/`REDDIT_REDIRECT_URI` (OAuth ownership verification) plus `REDDIT_USER_AGENT` and `OPENROUTER_API_KEY` (optional LLM structuring during `npm run approve`). Create a Reddit **web app** and register the redirect URI exactly (production must use HTTPS). Without the `REDDIT_*` credentials the app attempts the edit-code fallback, but Reddit may block the public `.json` confirmation request with HTTP 403; the fallback is therefore best-effort, not a guaranteed substitute for approved API access.
 
 ## Testing
 
@@ -82,6 +89,8 @@ Bulk subreddit scraping and arbitrary `--url` imports are disabled. See [Consent
 - **No build pipeline** — in-browser Babel is fine for an MVP, production wants Vite.
 - **Editorial dashboard** — ownership verification plus export (`npm run export-verified`) is implemented, but there is still no web UI for the approve step; it is CLI-only (`npm run approve`).
 - **Reddit app review** — Reddit may require review or approval before public distribution or higher-volume API access when the OAuth path is used; the edit-code fallback avoids the official API entirely but is weaker against adversarial proof.
+- **Reddit public JSON blocking** — verified on 2026-08-19: `www.reddit.com` and `old.reddit.com` returned HTTP 403 from browser and server-side requests, even with a browser-like User-Agent. Do not bypass this by exporting personal cookies; use approved API access, a dedicated throwaway test profile for one-off diagnostics, or a manual content-paste workflow.
+- **Runtime frontend CDNs** — Tailwind Play CDN and three.js CDN fit the current no-build architecture, but a production deployment should pin/bundle them via a real build pipeline (Vite/Tailwind CLI) to remove runtime CDN and Play-CDN risk.
 - **Legacy seed consent** — the eight current seed cases predate the new proof flow. Replace them with consented or synthetic cases before a broad public launch.
 - `public/uploads/` still holds early prototype artifacts (`sample.jsonl`, original scraper prompt) — candidates for pruning.
 
