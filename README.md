@@ -21,7 +21,7 @@ This project is co-owned and co-developed by ChromedomeV12 (repo owner) and Maso
 - **Tokyo Night / Tokyo Day**: use the moon/sun button in the signed-in topbar. The choice persists as `ao_theme` in local storage. Exact palette anchors and derived web surfaces live in `public/styles-v2.css`.
 - **Palette integrity**: canvas, text, comments and semantic blue/magenta/cyan/green/yellow/red tokens use the supplied Tokyo values exactly; intermediate surfaces and borders are derived with `color-mix()` rather than unrelated hex colors.
 - **Matte glass**: semantic cards/topbars keep strong Tokyo surface identity with restrained 12px blur, higher surface opacity, token borders, and theme-aware shadows.
-- **Static backdrop**: a subtle token grid and blue→magenta→cyan top line provide atmosphere without an animated canvas. Component hover/selection/reveal transitions use short 190ms transform/opacity/color motion and respect `prefers-reduced-motion`.
+- **Ambient waves**: three oversized edge-biased SVG ribbons use only Tokyo blue/magenta/cyan at low opacity. `ambient-waves.js` moves them by at most 104px based on document scroll progress (passive listener + rAF throttle); there is no free-running animation. They are clipped, non-interactive, cannot create horizontal overflow, and freeze completely under `prefers-reduced-motion`.
 - Tailwind Play CDN is configured with preflight disabled for no-build utility classes; the existing semantic CSS remains authoritative.
 
 ### API surface

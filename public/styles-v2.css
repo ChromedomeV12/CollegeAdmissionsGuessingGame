@@ -203,6 +203,79 @@ body::before {
   z-index: 100;
 }
 
+/* Ambient waves — three oversized blurred ribbon washes anchored to the
+   Tokyo accent trio (blue/magenta/cyan), biased to the viewport edges so
+   they frame the dossier instead of crossing it. Movement is driven only
+   by ambient-waves.js writing --wave-* custom properties on scroll; the
+   layers are fixed + clipped here so nothing can create page overflow.
+   Effective opacity stays in the 0.05-0.10 band (Night). */
+.ambient-waves {
+  --aw-o-a: .095;
+  --aw-o-b: .08;
+  --aw-o-c: .06;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: fixed;
+  user-select: none;
+  z-index: 0;
+}
+
+.ambient-waves svg {
+  display: block;
+  position: absolute;
+  transition: transform 160ms var(--ease);
+  will-change: transform;
+}
+
+/* Upper-left blue -> magenta ribbon. Drifts up to 88px against the scroll. */
+.aw-a {
+  filter: blur(56px);
+  height: 62vh;
+  left: -26vw;
+  opacity: var(--aw-o-a);
+  top: -16vh;
+  transform: translate3d(0, var(--wave-y-a, 0px), 0);
+  width: 96vw;
+}
+
+/* Lower-right cyan -> blue ribbon. Drifts down 104px and left 36px. */
+.aw-b {
+  bottom: -18vh;
+  filter: blur(64px);
+  height: 58vh;
+  opacity: var(--aw-o-b);
+  right: -22vw;
+  transform: translate3d(var(--wave-x-b, 0px), var(--wave-y-b, 0px), 0);
+  width: 94vw;
+}
+
+/* Faint magenta -> cyan corner wash, top right. Drifts up 52px, right 44px. */
+.aw-c {
+  filter: blur(72px);
+  height: 44vh;
+  opacity: var(--aw-o-c);
+  right: -30vw;
+  top: 6vh;
+  transform: translate3d(var(--wave-x-c, 0px), var(--wave-y-c, 0px), 0);
+  width: 68vw;
+}
+
+/* Tokyo Day: same shapes, dialed down into the 0.035-0.07 band so the
+   washes stay subordinate to the paper canvas. */
+[data-theme="light"] .ambient-waves {
+  --aw-o-a: .065;
+  --aw-o-b: .055;
+  --aw-o-c: .04;
+}
+
+/* Content always sits above the washes. */
+#root { position: relative; z-index: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-waves svg { transform: none !important; transition: none !important; }
+}
+
 /* Matte glass: one blur recipe for every elevated dossier surface.
    Specific backgrounds/borders below layer on top; blur stays uniform. */
 .card,

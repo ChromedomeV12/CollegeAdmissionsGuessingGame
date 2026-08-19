@@ -13,7 +13,7 @@ All notable changes to this project. Dates are YYYY-MM-DD.
 
 - Added exact Tokyo Night/Tokyo Day CSS anchor palettes with a persistent signed-in theme toggle (`ao_theme`). Intermediate surfaces/borders derive from those anchors via `color-mix()`; unrelated cobalt/paper/vermilion literals were removed.
 - Refined matte-glass surfaces (cards, topbars, metrics, badges, callouts) to retain stronger Tokyo surface identity: 12px blur, increased surface opacity, and light/dark-aware token shadows.
-- Added Tailwind Play CDN with preflight disabled; semantic CSS stays authoritative. The initially-added three.js constellation was removed after visual review — the final backdrop is static (subtle Tokyo grid + blue→magenta→cyan line), with attention redirected to card/button/tab/tier/school microinteractions and reduced-motion-safe transitions.
+- Added Tailwind Play CDN with preflight disabled; semantic CSS stays authoritative. The rejected three.js constellation remains removed. A restrained replacement uses three oversized Tokyo blue/magenta/cyan SVG ribbons that shift only with scroll (passive listener + rAF throttle, max 104px), stay edge-biased/low-opacity/non-interactive, and freeze under `prefers-reduced-motion`; component microinteractions remain the primary motion language.
 - Added e2e coverage for theme toggle persistence; manual browser verification covers every exact palette anchor, derived surfaces, glass blur, transitions, no canvas/three.js, and both themes.
 - Reddit fallback research confirmed HTTP 403 public-JSON blocking on both `www.reddit.com` and `old.reddit.com`; personal cookie export is explicitly prohibited in project guidance.
 

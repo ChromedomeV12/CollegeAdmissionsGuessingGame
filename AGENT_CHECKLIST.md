@@ -221,11 +221,11 @@ Capture one screenshot per phase plus the auth and leaderboard screens. Save to 
 - **Invocation**: screenshot the leaderboard screen.
 - **Look for**: "Global leaderboard", season selector, rivalry panel, the run's user row highlighted with a `you` tag after five cases, games count, average and best.
 
-### Check 6.8 — Tokyo theme and matte glass
-- **Invocation**: while signed in, click `[aria-label="Toggle theme"]`; assert `document.documentElement.dataset.theme` and `localStorage.ao_theme` change; reload and assert persistence. Capture Tokyo Night and Tokyo Day screenshots. Inspect `.card` computed style and confirm no `#ao-bg` or `window.THREE` dependency exists.
-- **Look for**: exact Night background `#1a1b26` / foreground `#c0caf5`; exact Day background `#e1e2e7` / foreground `#343b58`; exact supplied semantic colors; readable Tokyo-tinted matte-glass cards (`backdrop-filter: blur(12px) saturate(1.25)`), blue→magenta→cyan static top line, smooth short control/card transitions, no animated backdrop and no horizontal overflow.
+### Check 6.8 — Tokyo theme, matte glass, and ambient waves
+- **Invocation**: while signed in, toggle `[aria-label="Toggle theme"]`; assert dataset/localStorage persistence. Capture Night/Day screenshots. Inspect `.card` and `.ambient-waves`, then scroll from top to bottom and re-read SVG transforms. Emulate `prefers-reduced-motion: reduce` and reload.
+- **Look for**: exact Night/Day anchor colors; Tokyo-tinted `blur(12px) saturate(1.25)` glass; three low-opacity blue/magenta/cyan edge ribbons; pointer-events none; no horizontal overflow; transform delta on scroll capped at 120px; reduced motion produces `transform:none` and `transition-duration:0s`; no particles/WebGL/free-running animation.
 
-- **PASS (6.1–6.8)**: each screenshot exists and shows the expected screen with no obvious layout breakage, off-palette surfaces, unreadable theme, or continuous ambient animation. Record paths and computed-style evidence.
+- **PASS (6.1–6.8)**: screenshots and computed styles show no layout breakage, off-palette surfaces, unreadable theme, attention-grabbing movement, or motion under reduced-motion. Record top/scrolled/theme screenshots and transform evidence.
 
 ---
 
