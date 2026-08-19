@@ -185,6 +185,26 @@ async function main() {
     ]);
     log("PASS registered + reached Phase0 menu");
 
+    // ── Step 1a: Theme toggle + persistence ───────────────────────────────
+    const themeBefore = await page.evaluate(() => document.documentElement.dataset.theme || "dark");
+    const expectedTheme = themeBefore === "light" ? "dark" : "light";
+    await page.click('[aria-label="Toggle theme"]');
+    await page.waitForFunction(
+      (expected) => document.documentElement.dataset.theme === expected && localStorage.getItem("ao_theme") === expected,
+      { timeout: SHORT_TIMEOUT_MS },
+      expectedTheme,
+    );
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForSelector('[data-screen-label="00 Menu"]', { timeout: POLL_TIMEOUT_MS });
+    const persistedTheme = await page.evaluate(() => ({
+      attr: document.documentElement.dataset.theme,
+      stored: localStorage.getItem("ao_theme"),
+    }));
+    if (persistedTheme.attr !== expectedTheme || persistedTheme.stored !== expectedTheme) {
+      throw new Error(`Theme did not persist after reload: ${JSON.stringify(persistedTheme)}`);
+    }
+    log(`PASS theme toggled ${themeBefore} -> ${expectedTheme} and persisted after reload`);
+
     // ── Step 1b: Edit-code fallback submission flow ───────────────────────
     // Server is spawned with REDDIT_* envs forced empty, so the submission
     // center runs in fallback mode: a local ORACLE-XXXXXX proof code is issued

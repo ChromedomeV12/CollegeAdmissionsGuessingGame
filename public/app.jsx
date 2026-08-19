@@ -136,6 +136,15 @@ function App() {
   // Practice-only profiles (retry window expired or case abandoned). Scores
   // for these ids are neither POSTed nor counted locally.
   const [lockedProfiles, setLockedProfiles] = React.useState(new Set());
+  const [theme, setTheme] = React.useState(() => {
+    const stored = localStorage.getItem("ao_theme");
+    if (stored === "dark" || stored === "light") return stored;
+    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  });
+
+  React.useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   React.useEffect(() => {
     const stored = getStoredAuth();
@@ -174,6 +183,12 @@ function App() {
       .then(ids => { if (Array.isArray(ids)) setLockedProfiles(new Set(ids)); })
       .catch(() => {});
   }, [auth]);
+  function toggleTheme() {
+    const next = theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("ao_theme", next);
+    setTheme(next);
+  }
 
   const totalPoints = Object.values(scoresByProfile).reduce((a, b) => a + b, 0);
   const cases = Object.keys(scoresByProfile).length;
@@ -316,6 +331,9 @@ function App() {
             <button className="btn-ghost" onClick={() => setShowSubmission(false)} aria-label="Back to applicant menu">
               <i className="ti ti-arrow-left" aria-hidden="true" /> Game
             </button>
+            <button className="btn-ghost" onClick={toggleTheme} aria-label="Toggle theme">
+              <i className={`ti ti-${theme === "dark" ? "sun" : "moon"}`} aria-hidden="true" />
+            </button>
             <AvgRankChip rank={rank} average={average} />
             <button className="btn-ghost" onClick={handleLogout} aria-label="Log out">
               <i className="ti ti-logout" aria-hidden="true" /> Log out
@@ -378,6 +396,9 @@ function App() {
               </button>
             </>
           )}
+          <button className="btn-ghost" onClick={toggleTheme} aria-label="Toggle theme">
+            <i className={`ti ti-${theme === "dark" ? "sun" : "moon"}`} aria-hidden="true" />
+          </button>
           <AvgRankChip rank={rank} average={average} />
           <button className="btn-ghost" onClick={handleLogout} aria-label="Log out">
             <i className="ti ti-logout" aria-hidden="true" /> Log out

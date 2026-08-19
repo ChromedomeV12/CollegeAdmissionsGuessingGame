@@ -3,46 +3,48 @@
    Cool paper, cobalt navigation, vermilion signals, squared file-card surfaces. */
 
 :root {
-  --bg-canvas: #eef4fa;
-  --bg-canvas-2: #e3edf7;
-  --bg-surface: #ffffff;
-  --bg-surface-2: #f4f8fc;
-  --bg-surface-3: #dbe7f2;
-  --bg-ink: #10243e;
-  --bg-primary: #ffffff;
-  --bg-secondary: #dfe9f4;
-  --bg-danger: #fde9e7;
-  --bg-info-subtle: #e7f1ff;
+  /* Tokyo Night — dark canvas, cobalt accent, vermilion stamp.
+     Light variant in [data-theme="light"] below recolors every token. */
+  --bg-canvas: #1a1b26;
+  --bg-canvas-2: #16161e;
+  --bg-surface: #1a1b26;
+  --bg-surface-2: #23233a;
+  --bg-surface-3: #2e2f4a;
+  --bg-ink: #16161e;
+  --bg-primary: #1a1b26;
+  --bg-secondary: #23233a;
+  --bg-danger: color-mix(in srgb, #f7768e 14%, #1a1b26);
+  --bg-info-subtle: color-mix(in srgb, #7aa2f7 14%, #1a1b26);
 
-  --text-primary: #10243e;
-  --text-secondary: #3d5873;
-  --text-tertiary: #5d7187;
-  --text-danger: #8e2822;
-  --text-info: #0a5685;
-  --text-warning: #765000;
+  --text-primary: #c0caf5;
+  --text-secondary: #a9b1d6;
+  --text-tertiary: #565f89;
+  --text-danger: #f7768e;
+  --text-info: #7dcfff;
+  --text-warning: #e0af68;
 
-  --border-1: #d2deea;
-  --border-2: #7890a8;
-  --border-ink: #607991;
-  --border-light: #e6edf4;
-  --border-danger: #d79a95;
+  --border-1: #2e2f4a;
+  --border-2: #3b4261;
+  --border-ink: #565f89;
+  --border-light: #23233a;
+  --border-danger: #f7768e;
 
-  --accent: #2457f5;
-  --accent-fg: #ffffff;
-  --accent-bg: #e8eeff;
-  --accent-bd: #88a3ff;
-  --stamp: #ce3b27;
+  --accent: #7aa2f7;
+  --accent-fg: #1a1b26;
+  --accent-bg: color-mix(in srgb, #7aa2f7 16%, #1a1b26);
+  --accent-bd: #7aa2f7;
+  --stamp: #f7768e;
 
-  --accent-info-bg: #e1f1fb;
-  --accent-info-fg: #075a8a;
-  --accent-info-bd: #8dbbd4;
-  --accent-ok-bg: #e0f4ea;
-  --accent-ok-fg: #0a6848;
-  --accent-ok-bd: #86bfa8;
-  --accent-warn-bg: #fff2cf;
-  --accent-warn-fg: #765000;
-  --accent-danger-bg: #fde9e7;
-  --accent-danger-fg: #922d25;
+  --accent-info-bg: color-mix(in srgb, #7dcfff 14%, #1a1b26);
+  --accent-info-fg: #7dcfff;
+  --accent-info-bd: #4d7fa6;
+  --accent-ok-bg: color-mix(in srgb, #9ece6a 14%, #1a1b26);
+  --accent-ok-fg: #9ece6a;
+  --accent-ok-bd: #6fae5a;
+  --accent-warn-bg: color-mix(in srgb, #e0af68 16%, #1a1b26);
+  --accent-warn-fg: #e0af68;
+  --accent-danger-bg: color-mix(in srgb, #f7768e 14%, #1a1b26);
+  --accent-danger-fg: #f7768e;
 
   --r-sm: 3px;
   --r-md: 5px;
@@ -58,11 +60,17 @@
   --sp-6: 32px;
   --sp-7: 48px;
 
-  --shadow-1: 0 1px 2px rgb(16 36 62 / 0.05);
-  --shadow-2: 4px 5px 0 #d8e4ef;
-  --shadow-3: 7px 8px 0 #cddceb;
-  --shadow-glow: 0 0 0 3px #dce5ff;
-  --focus-ring: 0 0 0 2px #ffffff, 0 0 0 5px #2457f5;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.28);
+  --shadow-2: 4px 5px 0 rgb(0 0 0 / 0.30);
+  --shadow-3: 7px 8px 0 rgb(0 0 0 / 0.34);
+  --shadow-glow: 0 0 0 3px color-mix(in srgb, #7aa2f7 45%, transparent);
+  --focus-ring: 0 0 0 2px var(--bg-canvas), 0 0 0 5px var(--accent);
+
+  /* Matte glass — shared treatment for elevated dossier surfaces. */
+  --glass-blur: blur(14px) saturate(140%);
+  --glass-bg: color-mix(in srgb, var(--bg-surface) 55%, transparent);
+  --glass-shadow: 0 12px 32px rgb(0 0 0 / .30), inset 0 1px 0 rgb(255 255 255 / .07);
+  --glass-shadow-sm: 0 3px 10px rgb(0 0 0 / .22), inset 0 1px 0 rgb(255 255 255 / .07);
 
   --font-sans: "DM Sans", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
@@ -79,6 +87,67 @@
   --dur: 190ms;
 }
 
+[data-theme="light"] {
+  /* Tokyo Day — warm paper, cobalt accent, magenta stamp. */
+  --bg-canvas: #e1e2e7;
+  --bg-canvas-2: #c4c7da;
+  --bg-surface: #e9eaf0;
+  --bg-surface-2: #d4d7e3;
+  --bg-surface-3: #c8cad9;
+  --bg-ink: #c4c7da;
+  --bg-primary: #ffffff;
+  --bg-secondary: #c4c7da;
+  --bg-danger: #e9d2d8;
+  --bg-info-subtle: #d7e3f4;
+
+  --text-primary: #343b58;
+  --text-secondary: #5b6489;
+  --text-tertiary: #848cb5;
+  --text-danger: #f52a65;
+  --text-info: #00719c;
+  --text-warning: #8c6c3e;
+
+  --border-1: #b4b8d0;
+  --border-2: #8b90b5;
+  --border-ink: #6b7193;
+  --border-light: #d2d5e3;
+  --border-danger: #e099ab;
+
+  --accent: #2e7de9;
+  --accent-fg: #ffffff;
+  --accent-bg: #d7e3f7;
+  --accent-bd: #2e7de9;
+  --stamp: #f52a65;
+
+  --accent-info-bg: #d2eaf2;
+  --accent-info-fg: #00719c;
+  --accent-info-bd: #5fb4cf;
+  --accent-ok-bg: #dde9d2;
+  --accent-ok-fg: #587539;
+  --accent-ok-bd: #9bbf7a;
+  --accent-warn-bg: #f0e3c8;
+  --accent-warn-fg: #8c6c3e;
+  --accent-danger-bg: #f0d2da;
+  --accent-danger-fg: #c8403f;
+
+  --shadow-1: 0 1px 2px rgb(52 59 88 / 0.08);
+  --shadow-2: 4px 5px 0 #cdd6ea;
+  --shadow-3: 7px 8px 0 #c2cee0;
+  --shadow-glow: 0 0 0 3px #d7e3f7;
+  --focus-ring: 0 0 0 2px #ffffff, 0 0 0 5px #2e7de9;
+
+  /* Day glass — slightly more opaque, softer shadow, brighter top highlight. */
+  --glass-bg: color-mix(in srgb, var(--bg-surface) 62%, transparent);
+  --glass-shadow: 0 12px 28px rgb(52 59 88 / .14), inset 0 1px 0 rgb(255 255 255 / .65);
+  --glass-shadow-sm: 0 3px 10px rgb(52 59 88 / .10), inset 0 1px 0 rgb(255 255 255 / .65);
+}
+
+[data-theme="light"] body {
+  background-image:
+    linear-gradient(rgb(52 59 88 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(52 59 88 / 0.05) 1px, transparent 1px);
+}
+
 * { box-sizing: border-box; }
 
 html { min-width: 320px; scroll-behavior: smooth; }
@@ -88,8 +157,8 @@ body {
   color: var(--text-primary);
   background-color: var(--bg-canvas);
   background-image:
-    linear-gradient(rgb(16 36 62 / 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(16 36 62 / 0.045) 1px, transparent 1px);
+    linear-gradient(rgb(192 202 245 / 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(192 202 245 / 0.04) 1px, transparent 1px);
   background-size: 32px 32px;
   font-family: var(--font-sans);
   font-size: var(--fs-base);
@@ -105,6 +174,37 @@ body::before {
   opacity: 1;
   position: fixed;
   z-index: 100;
+}
+
+/* Ambient canvas sits behind everything; app surface floats above it. */
+#ao-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#root,
+.app-shell {
+  position: relative;
+  z-index: 1;
+}
+
+/* Matte glass: one blur recipe for every elevated dossier surface.
+   Specific backgrounds/borders below layer on top; blur stays uniform. */
+.card,
+.topbar,
+.school-card,
+.score-pop,
+.metric,
+.badge,
+.final-banner,
+.callout {
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
 
 button,
@@ -150,10 +250,10 @@ textarea::placeholder { color: var(--text-tertiary); }
 
 .topbar {
   align-items: center;
-  background: rgb(255 255 255 / 0.94);
+  background: var(--glass-bg);
   border: 1px solid var(--border-2);
   border-radius: var(--r-lg);
-  box-shadow: 4px 5px 0 #d5e1ec;
+  box-shadow: var(--glass-shadow);
   display: flex;
   gap: 20px;
   justify-content: space-between;
@@ -219,10 +319,10 @@ textarea::placeholder { color: var(--text-tertiary); }
 .phase-meta .dot { background: var(--stamp); height: 5px; width: 5px; }
 
 .card {
-  background: var(--bg-surface);
+  background: var(--glass-bg);
   border: 1px solid var(--border-2);
   border-radius: var(--r-lg);
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--glass-shadow);
   padding: 22px 24px;
 }
 
@@ -326,9 +426,10 @@ textarea::placeholder { color: var(--text-tertiary); }
 .chip,
 .pill {
   align-items: center;
-  background: var(--bg-surface-2);
+  background: var(--glass-bg);
   border: 1px solid var(--border-1);
   border-radius: var(--r-pill);
+  box-shadow: var(--glass-shadow-sm);
   color: var(--text-secondary);
   display: inline-flex;
   font-family: var(--font-mono);
@@ -426,9 +527,10 @@ hr.sep { border: 0; border-top: 1px solid var(--border-1); margin: 18px 0; }
 
 .school-card {
   align-items: center;
-  background: #ffffff;
+  background: var(--glass-bg);
   border: 1px solid var(--border-2);
   border-radius: var(--r-md);
+  box-shadow: var(--glass-shadow);
   display: flex;
   gap: 14px;
   justify-content: space-between;
@@ -482,7 +584,16 @@ hr.sep { border: 0; border-top: 1px solid var(--border-1); margin: 18px 0; }
   white-space: nowrap;
 }
 
-.metric { display: flex; flex-direction: column; gap: 6px; }
+.metric {
+  background: var(--glass-bg);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
+  box-shadow: var(--glass-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+}
 .metric .v { font-family: var(--font-serif); font-size: 32px; font-weight: 700; letter-spacing: -.045em; line-height: 1; }
 .metric .v .sub { color: var(--text-tertiary); font-family: var(--font-sans); font-size: 13px; font-weight: 500; }
 .metric .k { color: var(--text-secondary); font-size: 12px; font-weight: 600; }
@@ -568,6 +679,7 @@ hr.sep { border: 0; border-top: 1px solid var(--border-1); margin: 18px 0; }
   background: var(--accent-info-bg);
   border: 1px solid var(--accent-info-bd);
   border-radius: var(--r-md);
+  box-shadow: var(--glass-shadow-sm);
   color: var(--text-info);
   display: flex;
   gap: 12px;
@@ -590,7 +702,20 @@ hr.sep { border: 0; border-top: 1px solid var(--border-1); margin: 18px 0; }
 .result-row .delta.plus { color: var(--accent-ok-fg); }
 .result-row .delta.minus { color: var(--accent-danger-fg); }
 
-.score-pop { animation: scorePop 460ms var(--ease) both; font-family: var(--font-serif); font-size: var(--fs-score); font-weight: 700; letter-spacing: -.07em; line-height: .9; }
+.score-pop {
+  animation: scorePop 460ms var(--ease) both;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-lg);
+  box-shadow: var(--glass-shadow);
+  display: inline-block;
+  font-family: var(--font-serif);
+  font-size: var(--fs-score);
+  font-weight: 700;
+  letter-spacing: -.07em;
+  line-height: .9;
+  padding: .2em .32em;
+}
 
 @keyframes scorePop {
   from { opacity: 0; transform: scale(0.92); }
@@ -598,10 +723,10 @@ hr.sep { border: 0; border-top: 1px solid var(--border-1); margin: 18px 0; }
 }
 
 .final-banner {
-  background: var(--accent);
+  background: color-mix(in srgb, var(--accent) 84%, transparent);
   border: 1px solid #133ec9;
   border-radius: var(--r-lg);
-  box-shadow: 7px 8px 0 #a7baff;
+  box-shadow: var(--glass-shadow);
   color: #ffffff;
   margin-top: 34px;
   overflow: hidden;
