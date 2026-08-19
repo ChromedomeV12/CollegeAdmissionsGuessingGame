@@ -221,11 +221,11 @@ Capture one screenshot per phase plus the auth and leaderboard screens. Save to 
 - **Invocation**: screenshot the leaderboard screen.
 - **Look for**: "Global leaderboard", season selector, rivalry panel, the run's user row highlighted with a `you` tag after five cases, games count, average and best.
 
-### Check 6.8 — Tokyo theme, matte glass, and hybrid waves
-- **Invocation**: toggle/persist themes; capture Night/Day top and scrolled screenshots. Inspect `.ambient-waves`, `#ambient-wave-canvas`, `.aw-contours`, and `.card`. Read WebGL first-frame marker/alpha coverage when available. Emulate reduced motion and reload.
-- **Look for**: exact theme anchors; Tokyo-tinted glass; visible broad wave ribbons plus five parallel blue/magenta/cyan contours (not mere uniform haze); distinct top-vs-scrolled contour position; WebGL is supplementary and fallback remains visible; no particles/spinning/permanent loop; pointer-events none and zero horizontal overflow. Reduced motion yields static SVG transforms and no transition.
+### Check 6.8 — Tokyo theme, matte glass, and sculpted wallpaper
+- **Invocation**: toggle/persist themes; capture Night/Day top and scrolled screenshots. Inspect `.ambient-waves`, `#ambient-wave-canvas`, `.aw-fallback`, and `.card`. Confirm the WebGL first-frame marker, scroll/pointer bounds, hidden-tab pause where practical, and reduced-motion after reload.
+- **Look for**: exact theme anchors; Tokyo-tinted glass; full-viewport large overlapping organic folds with visible crest highlights and deep soft valleys (not grid, particles, line contours, or neon waves); no text obstruction; fallback hidden only after `data-wave-rendered="true"`; pointer-events none and zero overflow. Reduced motion must render one static frame with no scroll/pointer/time loop.
 
-- **PASS (6.1–6.8)**: screenshots clearly show wave geometry without obscuring text. WebGL success has `data-wave-rendered="true"`; fallback-only mode is still recognizable. Record opacity/stroke/coverage/scroll/reduced-motion evidence.
+- **PASS (6.1–6.8)**: screenshots resemble restrained macOS-style folded cloth/paper relief in both themes, remain readable, and visibly differ with scroll without demanding attention. Record shader marker, fallback state, scroll/reduced-motion/overflow/error evidence.
 
 ---
 

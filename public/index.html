@@ -43,73 +43,67 @@
 </head>
 <body>
 
-<!-- Ambient wave backdrop: purely decorative, scroll-responsive via ambient-waves.js.
-     Sits behind #root. The SVG layer is the reliable primary wave design in BOTH
-     modes: .aw-contours draws five crisp parallel Bezier contour lines (the
-     recognizable topographic wave shape) over one narrow soft ribbon (.aw-c),
-     framed by the broad blurred upper/lower edge ribbons (.aw-a/.aw-b).
-     Three.js only adds a faint supplementary sheen on the canvas after its
-     first frame actually renders (.has-wave-webgl); the contours are never
-     dimmed in that mode. -->
+<!-- Sculpted-fold backdrop: purely decorative, driven by ambient-waves.js.
+     Sits behind #root. The Three.js canvas paints an opaque layered relief
+     (broad organic fold boundaries with crest highlights and valley shadows)
+     and becomes the visible wallpaper only after its first frame renders
+     without error (data-wave-rendered). Until then the SVG fallback below
+     shows the same design statically: six broad closed Bezier fold shapes
+     whose crest-side gradients carry a soft highlight over a deep valley
+     shadow — no contour lines, no grid. -->
 <div class="ambient-waves" aria-hidden="true">
   <canvas id="ambient-wave-canvas" aria-hidden="true"></canvas>
-  <svg class="aw-a" viewBox="0 0 1440 400" preserveAspectRatio="none" focusable="false">
+  <svg class="aw-fallback" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" focusable="false">
     <defs>
-      <linearGradient id="aw-grad-a" x1="0" y1="0" x2="1" y2=".35">
-        <stop offset="0" stop-color="var(--accent)" stop-opacity=".95" />
-        <stop offset=".55" stop-color="var(--accent-magenta)" stop-opacity=".6" />
-        <stop offset="1" stop-color="var(--accent-magenta)" stop-opacity="0" />
+      <!-- Each gradient runs valley -> crest along the fold's local shading
+           direction: deep shadow anchor into the fold color, ending in a
+           soft crest highlight. All stops derive from exact Tokyo anchors. -->
+      <linearGradient id="aw-f1" x1="0" y1="1" x2="0.35" y2="0">
+        <stop offset="0" stop-color="var(--bg-canvas-2)" stop-opacity=".9" />
+        <stop offset=".55" stop-color="var(--accent-magenta)" stop-opacity=".16" />
+        <stop offset="1" stop-color="var(--accent)" stop-opacity=".30" />
+      </linearGradient>
+      <linearGradient id="aw-f2" x1="0.1" y1="1" x2="0.55" y2="0">
+        <stop offset="0" stop-color="var(--bg-canvas-2)" stop-opacity=".85" />
+        <stop offset=".55" stop-color="var(--accent)" stop-opacity=".14" />
+        <stop offset="1" stop-color="var(--text-info)" stop-opacity=".26" />
+      </linearGradient>
+      <linearGradient id="aw-f3" x1="0.2" y1="1" x2="0.7" y2="0.1">
+        <stop offset="0" stop-color="var(--bg-canvas-2)" stop-opacity=".8" />
+        <stop offset=".6" stop-color="var(--text-tertiary)" stop-opacity=".18" />
+        <stop offset="1" stop-color="var(--accent-magenta)" stop-opacity=".24" />
+      </linearGradient>
+      <linearGradient id="aw-f4" x1="0.3" y1="1" x2="0.75" y2="0.15">
+        <stop offset="0" stop-color="var(--bg-canvas-2)" stop-opacity=".75" />
+        <stop offset=".6" stop-color="var(--accent)" stop-opacity=".12" />
+        <stop offset="1" stop-color="var(--text-primary)" stop-opacity=".18" />
+      </linearGradient>
+      <linearGradient id="aw-f5" x1="0.4" y1="1" x2="0.85" y2="0.2">
+        <stop offset="0" stop-color="var(--bg-canvas-2)" stop-opacity=".7" />
+        <stop offset=".6" stop-color="var(--accent-magenta)" stop-opacity=".10" />
+        <stop offset="1" stop-color="var(--text-info)" stop-opacity=".16" />
+      </linearGradient>
+      <linearGradient id="aw-f6" x1="0.5" y1="1" x2="0.95" y2="0.25">
+        <stop offset="0" stop-color="var(--bg-canvas-2)" stop-opacity=".6" />
+        <stop offset=".65" stop-color="var(--text-tertiary)" stop-opacity=".12" />
+        <stop offset="1" stop-color="var(--accent)" stop-opacity=".14" />
       </linearGradient>
     </defs>
-    <path d="M-60,150 C240,60 480,260 760,140 C1000,40 1240,220 1500,110"
-          fill="none" stroke="url(#aw-grad-a)" stroke-width="100"
-          stroke-linecap="round" vector-effect="non-scaling-stroke" />
-  </svg>
-  <svg class="aw-b" viewBox="0 0 1440 420" preserveAspectRatio="none" focusable="false">
-    <defs>
-      <linearGradient id="aw-grad-b" x1="1" y1="1" x2="0" y2=".2">
-        <stop offset="0" stop-color="var(--text-info)" stop-opacity=".9" />
-        <stop offset=".6" stop-color="var(--accent)" stop-opacity=".5" />
-        <stop offset="1" stop-color="var(--accent)" stop-opacity="0" />
-      </linearGradient>
-    </defs>
-    <path d="M-60,300 C260,420 520,180 800,300 C1040,400 1260,230 1500,330"
-          fill="none" stroke="url(#aw-grad-b)" stroke-width="112"
-          stroke-linecap="round" vector-effect="non-scaling-stroke" />
-  </svg>
-  <svg class="aw-c" viewBox="0 0 1440 720" preserveAspectRatio="none" focusable="false">
-    <defs>
-      <linearGradient id="aw-grad-c" x1="0" y1="1" x2="1" y2="0">
-        <stop offset="0" stop-color="var(--accent-magenta)" stop-opacity=".9" />
-        <stop offset=".7" stop-color="var(--text-info)" stop-opacity=".5" />
-        <stop offset="1" stop-color="var(--text-info)" stop-opacity="0" />
-      </linearGradient>
-    </defs>
-    <path d="M-80,500 C300,580 520,320 780,360 C1020,396 1230,190 1520,130"
-          fill="none" stroke="url(#aw-grad-c)" stroke-width="64"
-          stroke-linecap="round" vector-effect="non-scaling-stroke" />
-  </svg>
-  <!-- Contour group: the unmistakable wave-shape layer. Five smooth parallel
-       cubic-Bezier contours climb lower-left to upper-right across the open
-       center, stroked in the exact Tokyo blue/magenta/cyan trio. No blur, so
-       each line reads as a topographic wave contour in a static screenshot.
-       Opacity is NEVER reduced under .has-wave-webgl. -->
-  <svg class="aw-contours" viewBox="0 0 1440 720" preserveAspectRatio="none" focusable="false">
-    <path class="ct-1" d="M-60,648 C260,588 420,498 720,448 C1020,398 1180,288 1520,208"
-          fill="none" stroke="var(--accent-magenta)" stroke-width="1.8"
-          stroke-linecap="round" vector-effect="non-scaling-stroke" />
-    <path class="ct-2" d="M-60,604 C260,544 420,454 720,404 C1020,354 1180,244 1520,164"
-          fill="none" stroke="var(--accent)" stroke-width="2"
-          stroke-linecap="round" vector-effect="non-scaling-stroke" />
-    <path class="ct-3" d="M-60,560 C260,500 420,410 720,360 C1020,310 1180,200 1520,120"
-          fill="none" stroke="var(--text-info)" stroke-width="2.4"
-          stroke-linecap="round" vector-effect="non-scaling-stroke" />
-    <path class="ct-4" d="M-60,516 C260,456 420,366 720,316 C1020,266 1180,156 1520,76"
-          fill="none" stroke="var(--accent)" stroke-width="2"
-          stroke-linecap="round" vector-effect="non-scaling-stroke" />
-    <path class="ct-5" d="M-60,472 C260,412 420,322 720,272 C1020,222 1180,112 1520,32"
-          fill="none" stroke="var(--accent-magenta)" stroke-width="1.8"
-          stroke-linecap="round" vector-effect="non-scaling-stroke" />
+    <!-- Six broad overlapping closed folds sweeping lower-left to upper-right;
+         each shape's bottom edge mirrors its top edge offset downward, so the
+         shape itself is one sculpted band of cloth. -->
+    <path d="M-120,690 C240,640 460,540 760,486 C1020,440 1180,330 1560,240
+             L1560,-120 L-120,-120 Z" fill="url(#aw-f1)" />
+    <path d="M-120,780 C260,726 480,620 780,566 C1040,522 1200,408 1560,320
+             L1560,-120 L-120,-120 Z" fill="url(#aw-f2)" />
+    <path d="M-120,860 C280,806 500,700 800,646 C1060,602 1220,486 1560,398
+             L1560,-120 L-120,-120 Z" fill="url(#aw-f3)" />
+    <path d="M-120,930 C300,876 520,770 820,716 C1080,672 1240,554 1560,466
+             L1560,-120 L-120,-120 Z" fill="url(#aw-f4)" />
+    <path d="M-120,995 C320,941 540,835 840,781 C1100,737 1260,617 1560,529
+             L1560,-120 L-120,-120 Z" fill="url(#aw-f5)" />
+    <path d="M-120,1055 C340,1001 560,895 860,841 C1120,797 1280,675 1560,587
+             L1560,-120 L-120,-120 Z" fill="url(#aw-f6)" />
   </svg>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>

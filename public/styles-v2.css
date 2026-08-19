@@ -168,12 +168,6 @@
   --glass-shadow-sm: 0 3px 10px rgb(52 59 88 / .10), inset 0 1px 0 rgb(255 255 255 / .65);
 }
 
-[data-theme="light"] body {
-  background-image:
-    linear-gradient(rgb(52 59 88 / 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(52 59 88 / 0.04) 1px, transparent 1px);
-}
-
 * { box-sizing: border-box; }
 
 html { min-width: 320px; scroll-behavior: smooth; }
@@ -182,10 +176,6 @@ body {
   min-height: 100vh;
   color: var(--text-primary);
   background-color: var(--bg-canvas);
-  background-image:
-    linear-gradient(rgb(192 202 245 / 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(192 202 245 / 0.03) 1px, transparent 1px);
-  background-size: 32px 32px;
   font-family: var(--font-sans);
   font-size: var(--fs-base);
   line-height: 1.62;
@@ -203,41 +193,21 @@ body::before {
   z-index: 100;
 }
 
-/* Ambient waves — hybrid contour system. The recognizable wave shape comes
-   from .aw-contours: five smooth parallel Bezier contour lines (Tokyo
-   blue/magenta/cyan, 1.8-2.4px strokes, NO blur) climbing lower-left to
-   upper-right across the open center, at 0.10-0.16 opacity (Night) /
-   0.07-0.11 (Day). Beneath them, .aw-c is a single narrow soft ribbon
-   (64px stroke, 11px blur); .aw-a/.aw-b remain broad blurred edge washes.
-   Three.js only adds a soft supplementary sheen when WebGL actually renders.
-   With WebGL live the edge ribbons ease slightly but the contour group is
-   NEVER dimmed — identical opacity in both modes. Layers are fixed +
-   clipped so nothing creates page overflow. */
+/* Sculpted-fold backdrop — procedural relief wallpaper. The WebGL canvas is
+   the primary surface: an opaque stack of broad organic fold boundaries with
+   crest highlights and valley shadows (driven by ambient-waves.js). The SVG
+   fallback shows the same design statically as six broad closed Bezier fold
+   shapes. The fallback is hidden ONLY after the first canvas frame renders
+   without error (data-wave-rendered). Layers are fixed + clipped so nothing
+   creates page overflow. */
 .ambient-waves {
-  --aw-o-a: .19;
-  --aw-o-b: .16;
-  --aw-o-c: .12;
-  --aw-o-ct-1: .10;
-  --aw-o-ct-2: .13;
-  --aw-o-ct-3: .16;
-  --aw-o-ct-4: .13;
-  --aw-o-ct-5: .10;
+  --wave-shift: 0px;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
   position: fixed;
   user-select: none;
   z-index: 0;
-}
-
-/* WebGL succeeded (first frame rendered): the canvas adds a faint sheen.
-   The edge ribbons soften slightly (floors 0.10/0.085/0.06) so color
-   layering stays coherent; --aw-o-ct-* are deliberately untouched here so
-   the contour lines keep full fallback opacity in WebGL mode. */
-.ambient-waves.has-wave-webgl {
-  --aw-o-a: .13;
-  --aw-o-b: .11;
-  --aw-o-c: .10;
 }
 
 #ambient-wave-canvas {
@@ -248,97 +218,26 @@ body::before {
   height: 100%;
 }
 
-.ambient-waves svg {
+/* Static fallback — broad closed fold shapes filling the viewport. Visible
+   until the canvas proves itself; the slight scroll drift (--wave-shift,
+   clamped to 64px) keeps the two layers aligned during handoff. */
+.aw-fallback {
   display: block;
+  height: 100%;
+  inset: 0;
+  opacity: 1;
   position: absolute;
-  transition: transform 160ms var(--ease);
-  will-change: transform;
+  transform: translate3d(0, var(--wave-shift), 0);
+  width: 100%;
 }
 
-/* Upper-edge blue -> magenta wave ribbon. Drifts up to 64px against scroll. */
-.aw-a {
-  filter: blur(20px);
-  height: 42vh;
-  left: -8vw;
-  opacity: var(--aw-o-a);
-  top: -10vh;
-  transform: translate3d(0, var(--wave-y-a, 0px), 0);
-  width: 108vw;
-}
+.ambient-waves[data-wave-rendered="true"] .aw-fallback { display: none; }
 
-/* Lower-edge cyan -> blue wave ribbon. Drifts down 72px and left 30px. */
-.aw-b {
-  bottom: -12vh;
-  filter: blur(26px);
-  height: 44vh;
-  opacity: var(--aw-o-b);
-  right: -8vw;
-  transform: translate3d(var(--wave-x-b, 0px), var(--wave-y-b, 0px), 0);
-  width: 108vw;
-}
-
-/* Narrow magenta -> cyan soft band beneath the contours: one 64px-stroke
-   ribbon (11px blur) climbing lower-left to upper-right, a legible glow
-   under the contour lines rather than a full-screen haze.
-   Drifts up 48px, right 36px. */
-.aw-c {
-  filter: blur(11px);
-  height: 46vh;
-  left: -6vw;
-  opacity: var(--aw-o-c);
-  top: 12vh;
-  transform: translate3d(var(--wave-x-c, 0px), var(--wave-y-c, 0px), 0);
-  width: 112vw;
-}
-
-/* Contour group — the primary wave-shape layer. Five parallel unblurred
-   Bezier contours traverse the open center (lower-left to upper-right).
-   Opacity is per line and identical with or without WebGL.
-   Drifts up 56px, right 28px (total travel ~62.6px, <= 72px). */
-.aw-contours {
-  filter: none;
-  height: 72vh;
-  left: -6vw;
-  top: 9vh;
-  transform: translate3d(var(--wave-x-ct, 0px), var(--wave-y-ct, 0px), 0);
-  width: 112vw;
-}
-
-.aw-contours path {
-  fill: none;
-  stroke-linecap: round;
-}
-
-.ct-1 { opacity: var(--aw-o-ct-1); }
-.ct-2 { opacity: var(--aw-o-ct-2); }
-.ct-3 { opacity: var(--aw-o-ct-3); }
-.ct-4 { opacity: var(--aw-o-ct-4); }
-.ct-5 { opacity: var(--aw-o-ct-5); }
-
-/* Tokyo Day: same shapes, dialed into the 0.07-0.14 band so the waves
-   stay subordinate to the paper canvas. */
-[data-theme="light"] .ambient-waves {
-  --aw-o-a: .14;
-  --aw-o-b: .12;
-  --aw-o-c: .09;
-  --aw-o-ct-1: .07;
-  --aw-o-ct-2: .09;
-  --aw-o-ct-3: .11;
-  --aw-o-ct-4: .09;
-  --aw-o-ct-5: .07;
-}
-
-[data-theme="light"] .ambient-waves.has-wave-webgl {
-  --aw-o-a: .10;
-  --aw-o-b: .085;
-  --aw-o-c: .07;
-}
-
-/* Content always sits above the washes. */
+/* Content always sits above the wallpaper. */
 #root { position: relative; z-index: 1; }
 
 @media (prefers-reduced-motion: reduce) {
-  .ambient-waves svg { transform: none !important; transition: none !important; }
+  .aw-fallback { transform: none !important; }
 }
 
 /* Matte glass: one blur recipe for every elevated dossier surface.
@@ -1023,7 +922,6 @@ a:focus-visible { box-shadow: var(--focus-ring); }
 }
 
 @media (max-width: 700px) {
-  body { background-size: 24px 24px; }
   .app-shell { padding: 22px 14px 72px; }
   .topbar { gap: 12px; margin-bottom: 34px; padding: 12px; }
   .topbar,
