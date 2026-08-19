@@ -44,39 +44,75 @@
 <body>
 
 <!-- Ambient wave backdrop: purely decorative, scroll-responsive via ambient-waves.js.
-     Sits behind #root; if the script is blocked the layers rest at their default transform. -->
+     Sits behind #root. The SVG layer is the reliable primary wave design in BOTH
+     modes: .aw-contours draws five crisp parallel Bezier contour lines (the
+     recognizable topographic wave shape) over one narrow soft ribbon (.aw-c),
+     framed by the broad blurred upper/lower edge ribbons (.aw-a/.aw-b).
+     Three.js only adds a faint supplementary sheen on the canvas after its
+     first frame actually renders (.has-wave-webgl); the contours are never
+     dimmed in that mode. -->
 <div class="ambient-waves" aria-hidden="true">
-  <svg class="aw-a" viewBox="0 0 1200 600" preserveAspectRatio="none" focusable="false">
+  <canvas id="ambient-wave-canvas" aria-hidden="true"></canvas>
+  <svg class="aw-a" viewBox="0 0 1440 400" preserveAspectRatio="none" focusable="false">
     <defs>
-      <linearGradient id="aw-grad-a" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="var(--accent)" stop-opacity=".9" />
-        <stop offset=".55" stop-color="var(--accent-magenta)" stop-opacity=".5" />
+      <linearGradient id="aw-grad-a" x1="0" y1="0" x2="1" y2=".35">
+        <stop offset="0" stop-color="var(--accent)" stop-opacity=".95" />
+        <stop offset=".55" stop-color="var(--accent-magenta)" stop-opacity=".6" />
         <stop offset="1" stop-color="var(--accent-magenta)" stop-opacity="0" />
       </linearGradient>
     </defs>
-    <path fill="url(#aw-grad-a)" d="M-40,240 C220,80 420,420 680,260 C880,140 1040,340 1240,200 L1240,600 L-40,600 Z" />
+    <path d="M-60,150 C240,60 480,260 760,140 C1000,40 1240,220 1500,110"
+          fill="none" stroke="url(#aw-grad-a)" stroke-width="100"
+          stroke-linecap="round" vector-effect="non-scaling-stroke" />
   </svg>
-  <svg class="aw-b" viewBox="0 0 1200 640" preserveAspectRatio="none" focusable="false">
+  <svg class="aw-b" viewBox="0 0 1440 420" preserveAspectRatio="none" focusable="false">
     <defs>
-      <linearGradient id="aw-grad-b" x1="1" y1="1" x2="0" y2="0">
-        <stop offset="0" stop-color="var(--text-info)" stop-opacity=".85" />
-        <stop offset=".6" stop-color="var(--accent)" stop-opacity=".45" />
+      <linearGradient id="aw-grad-b" x1="1" y1="1" x2="0" y2=".2">
+        <stop offset="0" stop-color="var(--text-info)" stop-opacity=".9" />
+        <stop offset=".6" stop-color="var(--accent)" stop-opacity=".5" />
         <stop offset="1" stop-color="var(--accent)" stop-opacity="0" />
       </linearGradient>
     </defs>
-    <path fill="url(#aw-grad-b)" d="M-40,520 C240,360 460,620 720,460 C900,350 1080,520 1240,420 L1240,640 L-40,640 Z" />
+    <path d="M-60,300 C260,420 520,180 800,300 C1040,400 1260,230 1500,330"
+          fill="none" stroke="url(#aw-grad-b)" stroke-width="112"
+          stroke-linecap="round" vector-effect="non-scaling-stroke" />
   </svg>
-  <svg class="aw-c" viewBox="0 0 1000 480" preserveAspectRatio="none" focusable="false">
+  <svg class="aw-c" viewBox="0 0 1440 720" preserveAspectRatio="none" focusable="false">
     <defs>
-      <linearGradient id="aw-grad-c" x1="0" y1="0" x2=".4" y2="1">
-        <stop offset="0" stop-color="var(--accent-magenta)" stop-opacity=".8" />
-        <stop offset=".7" stop-color="var(--text-info)" stop-opacity=".35" />
+      <linearGradient id="aw-grad-c" x1="0" y1="1" x2="1" y2="0">
+        <stop offset="0" stop-color="var(--accent-magenta)" stop-opacity=".9" />
+        <stop offset=".7" stop-color="var(--text-info)" stop-opacity=".5" />
         <stop offset="1" stop-color="var(--text-info)" stop-opacity="0" />
       </linearGradient>
     </defs>
-    <path fill="url(#aw-grad-c)" d="M-40,150 C180,40 380,300 620,170 C780,90 900,220 1040,130 L1040,0 L-40,0 Z" />
+    <path d="M-80,500 C300,580 520,320 780,360 C1020,396 1230,190 1520,130"
+          fill="none" stroke="url(#aw-grad-c)" stroke-width="64"
+          stroke-linecap="round" vector-effect="non-scaling-stroke" />
+  </svg>
+  <!-- Contour group: the unmistakable wave-shape layer. Five smooth parallel
+       cubic-Bezier contours climb lower-left to upper-right across the open
+       center, stroked in the exact Tokyo blue/magenta/cyan trio. No blur, so
+       each line reads as a topographic wave contour in a static screenshot.
+       Opacity is NEVER reduced under .has-wave-webgl. -->
+  <svg class="aw-contours" viewBox="0 0 1440 720" preserveAspectRatio="none" focusable="false">
+    <path class="ct-1" d="M-60,648 C260,588 420,498 720,448 C1020,398 1180,288 1520,208"
+          fill="none" stroke="var(--accent-magenta)" stroke-width="1.8"
+          stroke-linecap="round" vector-effect="non-scaling-stroke" />
+    <path class="ct-2" d="M-60,604 C260,544 420,454 720,404 C1020,354 1180,244 1520,164"
+          fill="none" stroke="var(--accent)" stroke-width="2"
+          stroke-linecap="round" vector-effect="non-scaling-stroke" />
+    <path class="ct-3" d="M-60,560 C260,500 420,410 720,360 C1020,310 1180,200 1520,120"
+          fill="none" stroke="var(--text-info)" stroke-width="2.4"
+          stroke-linecap="round" vector-effect="non-scaling-stroke" />
+    <path class="ct-4" d="M-60,516 C260,456 420,366 720,316 C1020,266 1180,156 1520,76"
+          fill="none" stroke="var(--accent)" stroke-width="2"
+          stroke-linecap="round" vector-effect="non-scaling-stroke" />
+    <path class="ct-5" d="M-60,472 C260,412 420,322 720,272 C1020,222 1180,112 1520,32"
+          fill="none" stroke="var(--accent-magenta)" stroke-width="1.8"
+          stroke-linecap="round" vector-effect="non-scaling-stroke" />
   </svg>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <script src="ambient-waves.js"></script>
 
 <div id="root"></div>

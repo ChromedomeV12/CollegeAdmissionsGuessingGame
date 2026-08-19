@@ -1,7 +1,7 @@
 # Admissions Oracle - Agent Instructions
 
 ## Architecture & Data Flow
-- **Frontend (`public/`)**: React Single-Page Application compiled in-browser via `@babel/standalone`. No build step (Webpack/Vite). `styles-v2.css` is the semantic component stylesheet; Tailwind Play CDN is available with preflight disabled. `ambient-waves.js` drives three low-opacity Tokyo SVG ribbons only in response to scroll; there is no continuous background loop.
+- **Frontend (`public/`)**: React Single-Page Application compiled in-browser via `@babel/standalone`. No build step. `styles-v2.css` is the semantic component stylesheet; Tailwind Play CDN has preflight disabled. `ambient-waves.js` renders an on-demand Three.js wave shader with visible SVG ribbons/contours as the reliable fallback/shape layer; it reacts to scroll/theme/resize and has no permanent animation loop.
 - **Backend (`server.js`)**: Express server serving static files from `public/` and a single `/api/*` mount. There are **no legacy non-API routes** — every `/register`, `/login`, `/me`, `/profiles` etc. lives under `/api/`.
 - **Hybrid Storage**:
   - **Static Content (`data/profiles.jsonl`)**: Read-only to the server. Loaded into memory on startup and reloaded on each `/api/profiles` request. The **single source of truth** for profile data — served to the frontend only via `GET /api/profiles` (and `/api/profiles/:id` for full records).
@@ -29,7 +29,7 @@
 
 ## Code Conventions & Gotchas
 - **Defensive UI Rendering**: When modifying `public/phase*.jsx` components, **ALWAYS use optional chaining (`?.`)** and fallback defaults (`|| {}`, `|| []`) when accessing profile data (e.g., `test_scores`, `academic_profile`, `extracurriculars`). The LLM scraper is imperfect; missing data must render empty states, not crash the React tree. Hardening is already applied to `phase1-profile.jsx`, `phase2-tier.jsx`, `phase4-results.jsx`.
-- **Theme System**: Tokyo Night/Day anchors live only in `public/styles-v2.css`; the toggle in `app.jsx` persists `ao_theme` and sets `document.documentElement.dataset.theme`. Use existing tokens (`--bg-*`, `--text-*`, `--accent-*`, `--border-*`) — intermediate surfaces/borders derive with `color-mix()`. Never add dark-only hardcoded UI colors, WebGL/particles, or free-running ambient animation. Background movement must remain scroll-linked, pointer-events-none, edge-biased, clamped, and disabled by `prefers-reduced-motion`. Decorative chart/confetti/school-brand colors are allowed.
+- **Theme System**: Tokyo Night/Day anchors live only in `public/styles-v2.css`; the toggle in `app.jsx` persists `ao_theme`. Use existing tokens and derive surfaces via `color-mix()`. Ambient design may use WebGL only for broad abstract waves — never particles, spinning objects, or free-running loops. SVG fallback/contours must stay perceptible when WebGL succeeds and remain fully usable when CDN/WebGL fails. All layers are pointer-events-none, clamped, behind `#root`, and static under `prefers-reduced-motion`.
 - **Scoring Logic (`public/scoring.js` + `phase4-results.jsx`)**: every case scores 0–100, never negative.
   - School selection: up to **70** — Jaccard overlap `|selected ∩ admitted| / |selected ∪ admitted|` over the visible schools.
   - University tier: up to **15** — distance credit (correct 15, off-by-one 9, off-by-two 5, else 0).

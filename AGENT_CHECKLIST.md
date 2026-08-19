@@ -221,11 +221,11 @@ Capture one screenshot per phase plus the auth and leaderboard screens. Save to 
 - **Invocation**: screenshot the leaderboard screen.
 - **Look for**: "Global leaderboard", season selector, rivalry panel, the run's user row highlighted with a `you` tag after five cases, games count, average and best.
 
-### Check 6.8 — Tokyo theme, matte glass, and ambient waves
-- **Invocation**: while signed in, toggle `[aria-label="Toggle theme"]`; assert dataset/localStorage persistence. Capture Night/Day screenshots. Inspect `.card` and `.ambient-waves`, then scroll from top to bottom and re-read SVG transforms. Emulate `prefers-reduced-motion: reduce` and reload.
-- **Look for**: exact Night/Day anchor colors; Tokyo-tinted `blur(12px) saturate(1.25)` glass; three low-opacity blue/magenta/cyan edge ribbons; pointer-events none; no horizontal overflow; transform delta on scroll capped at 120px; reduced motion produces `transform:none` and `transition-duration:0s`; no particles/WebGL/free-running animation.
+### Check 6.8 — Tokyo theme, matte glass, and hybrid waves
+- **Invocation**: toggle/persist themes; capture Night/Day top and scrolled screenshots. Inspect `.ambient-waves`, `#ambient-wave-canvas`, `.aw-contours`, and `.card`. Read WebGL first-frame marker/alpha coverage when available. Emulate reduced motion and reload.
+- **Look for**: exact theme anchors; Tokyo-tinted glass; visible broad wave ribbons plus five parallel blue/magenta/cyan contours (not mere uniform haze); distinct top-vs-scrolled contour position; WebGL is supplementary and fallback remains visible; no particles/spinning/permanent loop; pointer-events none and zero horizontal overflow. Reduced motion yields static SVG transforms and no transition.
 
-- **PASS (6.1–6.8)**: screenshots and computed styles show no layout breakage, off-palette surfaces, unreadable theme, attention-grabbing movement, or motion under reduced-motion. Record top/scrolled/theme screenshots and transform evidence.
+- **PASS (6.1–6.8)**: screenshots clearly show wave geometry without obscuring text. WebGL success has `data-wave-rendered="true"`; fallback-only mode is still recognizable. Record opacity/stroke/coverage/scroll/reduced-motion evidence.
 
 ---
 
