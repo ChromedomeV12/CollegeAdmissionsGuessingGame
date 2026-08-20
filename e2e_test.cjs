@@ -185,27 +185,28 @@ async function main() {
 
     async function selectNoAdmitClaims() {
       const claimLabels = [
-        "Applicant was not admitted to any T50 University",
-        "Applicant was not admitted to any T20 LAC",
+        ["Applicant was not admitted to any T50 University", "申请人未被任何全美前 50 综合大学录取"],
+        ["Applicant was not admitted to any T20 LAC", "申请人未被任何全美前 20 文理学院录取"],
       ];
-      for (const label of claimLabels) {
+      for (const labels of claimLabels) {
         await page.waitForFunction(
           (wanted) => [...document.querySelectorAll('[data-screen-label="02 Tier"] [role="button"]')]
-            .some((claim) => (claim.textContent || "").includes(wanted)),
+            .some((claim) => wanted.some((label) => (claim.textContent || "").includes(label))),
           { timeout: SHORT_TIMEOUT_MS },
-          label,
+          labels,
         );
         await page.evaluate((wanted) => {
           const claim = [...document.querySelectorAll('[data-screen-label="02 Tier"] [role="button"]')]
-            .find((candidate) => (candidate.textContent || "").includes(wanted));
-          if (!claim) throw new Error(`Claim "${wanted}" not found`);
+            .find((candidate) => wanted.some((label) => (candidate.textContent || "").includes(label)));
+          if (!claim) throw new Error(`Claim "${wanted.join(" / ")}" not found`);
           if (claim.getAttribute("aria-pressed") !== "true") claim.click();
-        }, label);
+        }, labels);
         await page.waitForFunction(
           (wanted) => [...document.querySelectorAll('[data-screen-label="02 Tier"] [role="button"]')]
-            .some((claim) => (claim.textContent || "").includes(wanted) && claim.getAttribute("aria-pressed") === "true"),
+            .some((claim) => wanted.some((label) => (claim.textContent || "").includes(label))
+              && claim.getAttribute("aria-pressed") === "true"),
           { timeout: SHORT_TIMEOUT_MS },
-          label,
+          labels,
         );
       }
     }
@@ -303,19 +304,24 @@ async function main() {
     await page.waitForSelector("#auth-confirm", { timeout: SHORT_TIMEOUT_MS });
 
     for (const [selector, value] of [["#auth-username", username], ["#auth-password", password], ["#auth-confirm", password]]) {
-      await page.click(selector);
-      await page.keyboard.down("Control");
-      await page.keyboard.press("A");
-      await page.keyboard.up("Control");
+      await page.focus(selector);
+      await page.$eval(selector, (input) => input.select());
       await page.type(selector, value);
     }
 
     const submitBtn = await page.$('[data-testid="auth-submit"]');
     if (!submitBtn) throw new Error("Register submit button not found");
-    await Promise.all([
-      page.waitForSelector('[data-screen-label="Home"]', { timeout: POLL_TIMEOUT_MS }),
-      submitBtn.click(),
-    ]);
+    await submitBtn.click();
+    await page.waitForFunction(() => !!document.querySelector('[data-screen-label="Home"]')
+      || !!document.querySelector('[data-auth-screen] [role="alert"]'), { timeout: POLL_TIMEOUT_MS });
+    const registrationState = await page.evaluate(() => ({
+      home: !!document.querySelector('[data-screen-label="Home"]'),
+      alert: (document.querySelector('[data-auth-screen] [role="alert"]')?.textContent || "").trim(),
+      username: document.querySelector("#auth-username")?.value || "",
+      passwordLength: document.querySelector("#auth-password")?.value?.length || 0,
+      confirmLength: document.querySelector("#auth-confirm")?.value?.length || 0,
+    }));
+    if (!registrationState.home) throw new Error(`Registration did not reach Home: ${JSON.stringify(registrationState)}`);
     log("PASS registered and opened signed-in Home");
     const token = await page.evaluate(() => localStorage.getItem("ao_token"));
     if (!token) throw new Error("Registration did not persist an auth token");
@@ -509,26 +515,37 @@ async function main() {
         throw new Error(`Pending reveal leaked or omitted result fields: ${JSON.stringify(resultKeys)}`);
       }
 
-      const firstRevealGate = await page.evaluate(() => {
+      if (profileIdx === 0) {
+        await clickTestId("language-toggle");
+        await page.waitForFunction(() => document.documentElement.lang === "zh-CN" && localStorage.ao_lang === "zh-CN");
+      }
+
+      const firstRevealGate = await page.evaluate((isChinese) => {
         const screen = document.querySelector('[data-screen-label="04 Reveal"]');
         const text = screen?.textContent || "";
-        const scoreCard = screen?.querySelector(".score-pop")?.closest(".card");
+        const scoreCard = screen?.querySelector('[data-testid="results-score-card"]');
         const grid = scoreCard?.parentElement;
         const retry = screen?.querySelector('[data-testid="retry-case"]');
         const scoreStyle = scoreCard ? getComputedStyle(scoreCard) : null;
+        const labels = isChinese ? ["案件分数", "准确率", "用时"] : ["Case score", "Accuracy", "Time"];
         return {
-          hasAggregates: ["Case score", "Accuracy", "Time"].every((label) => text.includes(label)),
-          hasDetails: text.includes("Tier results") || text.includes("School-by-school") || !!screen?.querySelector(".final-banner"),
+          hasAggregates: labels.every((label) => text.includes(label)),
+          hasDetails: !!screen?.querySelector('[data-testid="reveal-details"]'),
+          hasEnglishAggregateCopy: ["Case score", "Accuracy", "Time", "Retry case"]
+            .some((label) => text.includes(label)),
           retryText: (retry?.textContent || "").trim(),
           visual: !!scoreCard && getComputedStyle(grid).display === "grid"
             && Number.parseFloat(scoreStyle.borderRadius) > 0
             && retry.getBoundingClientRect().height >= 30,
         };
-      });
+      }, profileIdx === 0);
+      const retryPattern = profileIdx === 0 ? /^重试案件（[1-5] 秒）$/ : /^Retry case \([1-5]s\)$/;
       if (!firstRevealGate.hasAggregates || firstRevealGate.hasDetails || !firstRevealGate.visual
-          || !/^Retry case \([1-5]s\)$/.test(firstRevealGate.retryText)) {
+          || !retryPattern.test(firstRevealGate.retryText)
+          || (profileIdx === 0 && firstRevealGate.hasEnglishAggregateCopy)) {
         throw new Error(`First reveal gate failed for profile #${profileIdx}: ${JSON.stringify(firstRevealGate)}`);
       }
+      if (profileIdx === 0) log("PASS zh-CN first reveal shows localized aggregates and retry without answer details");
 
       if (detailRequestPaths.length !== detailRequestsBeforeReveal) {
         throw new Error(`Client requested full profile details before finalization for profile #${profileIdx}`);
@@ -539,20 +556,27 @@ async function main() {
         await clickTestId("retry-case");
         await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: POLL_TIMEOUT_MS });
         await revealWithTierPicks("T50", "T5 LAC");
-        await page.waitForFunction(() => {
-          const screen = document.querySelector('[data-screen-label="04 Reveal"]');
-          return (screen?.textContent || "").includes("Tier results") && !!screen?.querySelector(".final-banner");
-        }, { timeout: POLL_TIMEOUT_MS });
+        await page.waitForSelector('[data-testid="reveal-details"] [data-testid="final-banner"]', { timeout: POLL_TIMEOUT_MS });
+        const chineseFinal = await page.$eval('[data-screen-label="04 Reveal"]', (screen) => {
+          const text = screen.textContent || "";
+          return {
+            hasChinese: ["层级结果", "逐校结果", "案件启示", "最终入读", "录取日期", "总排名", "本案件贡献"]
+              .every((label) => text.includes(label)),
+            hasEnglish: ["Tier results", "School-by-school", "What the case teaches", "Enrolled at", "Admitted on", "Overall ranking", "This case contributed"]
+              .some((label) => text.includes(label)),
+          };
+        });
+        if (!chineseFinal.hasChinese || chineseFinal.hasEnglish) {
+          throw new Error(`zh-CN finalized reveal copy gate failed: ${JSON.stringify(chineseFinal)}`);
+        }
         finalScore = await readCaseScore(profileIdx);
         if (finalScore >= firstScore) {
           throw new Error(`Exact retry replacement was not lower: first=${firstScore}, second=${finalScore}`);
         }
         log(`PASS lower second result replaced first exactly (${firstScore} -> ${finalScore})`);
+        log("PASS zh-CN retry finalized with localized breakdown, enrollment, and contribution");
       } else if (profileIdx === 1) {
-        await page.waitForFunction(() => {
-          const screen = document.querySelector('[data-screen-label="04 Reveal"]');
-          return (screen?.textContent || "").includes("Tier results") && !!screen?.querySelector(".final-banner");
-        }, { timeout: POLL_TIMEOUT_MS });
+        await page.waitForSelector('[data-testid="reveal-details"] [data-testid="final-banner"]', { timeout: POLL_TIMEOUT_MS });
         finalScore = await readCaseScore(profileIdx);
         if (finalScore !== firstScore) throw new Error(`Timeout changed first result: ${firstScore} -> ${finalScore}`);
         log("PASS retry timeout finalized the first server result");
@@ -570,10 +594,7 @@ async function main() {
         await clickTestId("retry-case");
         await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: POLL_TIMEOUT_MS });
         await revealWithNoAdmitClaims();
-        await page.waitForFunction(() => {
-          const screen = document.querySelector('[data-screen-label="04 Reveal"]');
-          return (screen?.textContent || "").includes("Tier results") && !!screen?.querySelector(".final-banner");
-        }, { timeout: POLL_TIMEOUT_MS });
+        await page.waitForSelector('[data-testid="reveal-details"] [data-testid="final-banner"]', { timeout: POLL_TIMEOUT_MS });
         finalScore = await readCaseScore(profileIdx);
       }
 
@@ -597,7 +618,7 @@ async function main() {
       const practiceBadgeVisible = await page.evaluate((idx) => {
         const card = document.querySelectorAll('[data-screen-label="00 Menu"] .school-card')[idx];
         return !!card && [...card.querySelectorAll(".badge")]
-          .some((badge) => (badge.textContent || "").trim() === "Practice");
+          .some((badge) => ["Practice", "练习"].includes((badge.textContent || "").trim()));
       }, profileIdx);
       if (!practiceBadgeVisible) throw new Error(`Finalized profile #${profileIdx} was not marked Practice`);
 
@@ -607,25 +628,30 @@ async function main() {
         await page.evaluate((idx) => document.querySelectorAll('[data-screen-label="00 Menu"] .school-card')[idx].click(), profileIdx);
         await page.waitForSelector('[data-screen-label="01 Profile"]', { timeout: POLL_TIMEOUT_MS });
         await page.waitForSelector('[data-testid="correct-choices-tab"]', { timeout: POLL_TIMEOUT_MS });
+        const correctChoicesLabel = await page.$eval('[data-testid="correct-choices-tab"]', (tab) => (tab.textContent || "").trim());
+        if (correctChoicesLabel !== "正确选择") throw new Error(`Unexpected zh-CN Correct choices label: ${correctChoicesLabel}`);
         await clickTestId("correct-choices-tab");
         await page.waitForFunction(() => (document.querySelector('[data-screen-label="01 Profile"]')?.textContent || "")
-          .includes("This file is finalized and no longer affects your score."), { timeout: SHORT_TIMEOUT_MS });
+          .includes("此档案已结算，不再影响你的分数。"), { timeout: SHORT_TIMEOUT_MS });
         await startGuessing();
         const practiceTierText = await page.$eval('[data-screen-label="02 Tier"]', (screen) => screen.textContent || "");
-        if (practiceTierText.includes("Time bonus")) throw new Error("Practice tier phase claimed a time bonus");
+        if (/Time bonus|时间奖励/.test(practiceTierText)) throw new Error("Practice tier phase claimed a time bonus");
         await revealWithNoAdmitClaims();
         const practiceState = await page.$eval('[data-screen-label="04 Reveal"]', (screen) => {
           const text = screen.textContent || "";
           const labels = [...screen.querySelectorAll(".label")].map((node) => (node.textContent || "").trim());
           return {
             text,
-            hasPracticeCopy: text.includes("Practice feedback") && text.includes("not recorded"),
-            hasTimeClaim: labels.includes("Time") || text.includes("Score multiplier"),
-            hasScoringClaim: /ranking|contributed|season/i.test(text),
+            hasPracticeCopy: !!screen.querySelector('[data-testid="practice-feedback"]')
+              && text.includes("练习反馈") && text.includes("不会记录，也不会影响你的分数。"),
+            hasEnglishPracticeCopy: ["Practice feedback", "Practice score"].some((label) => text.includes(label)),
+            hasTimeClaim: labels.includes("用时") || text.includes("分数乘数"),
+            hasScoringClaim: /总排名|本案件贡献|赛季/.test(text),
             hasRetry: !!screen.querySelector('[data-testid="retry-case"]'),
           };
         });
-        if (!practiceState.hasPracticeCopy || practiceState.hasTimeClaim || practiceState.hasScoringClaim || practiceState.hasRetry) {
+        if (!practiceState.hasPracticeCopy || practiceState.hasEnglishPracticeCopy
+            || practiceState.hasTimeClaim || practiceState.hasScoringClaim || practiceState.hasRetry) {
           throw new Error(`Practice copy exposed scoring claims: ${JSON.stringify(practiceState)}`);
         }
         if (attemptMutationPaths.length !== attemptCallsBeforePractice) throw new Error("Practice called an attempt endpoint");
@@ -633,9 +659,12 @@ async function main() {
         if (meAfterPractice.scores?.[selectedProfileId] !== scoreBeforePractice) {
           throw new Error("Practice changed the persisted score");
         }
+        await clickTestId("language-toggle");
+        await page.waitForFunction(() => document.documentElement.lang === "en" && localStorage.ao_lang === "en"
+          && (document.querySelector('[data-testid="practice-feedback"]')?.textContent || "").includes("Practice feedback"));
         await clickTestId("nav-menu");
         await page.waitForSelector('[data-screen-label="00 Menu"]', { timeout: POLL_TIMEOUT_MS });
-        log("PASS persisted Practice shows Correct choices, no scoring copy/calls, immutable score");
+        log("PASS zh-CN Correct choices and Practice stay unrecorded, then reveal toggles back to English without reload");
       }
     }
 
@@ -738,6 +767,20 @@ async function main() {
       throw new Error(`Duel shared row missing or malformed: ${JSON.stringify(duel)}`);
     }
     log(`PASS actual rival add/list/duel shared row for ${profiles[0].id}`);
+    await clickTestId("language-toggle");
+    await page.waitForFunction((wanted) => document.documentElement.lang === "zh-CN"
+      && (document.body.textContent || "").includes("全球排行榜")
+      && (document.body.textContent || "").includes("对手")
+      && (document.body.textContent || "").includes(wanted), { timeout: SHORT_TIMEOUT_MS }, rivalUsername);
+    const chineseLeaderboardHasEnglish = await page.evaluate(() => [
+      "Global leaderboard", "Rivalry", "Head-to-head on shared cases"
+    ].some((label) => (document.body.textContent || "").includes(label)));
+    if (chineseLeaderboardHasEnglish) throw new Error("zh-CN leaderboard retained representative English UI copy");
+    await clickTestId("language-toggle");
+    await page.waitForFunction(() => document.documentElement.lang === "en"
+      && (document.body.textContent || "").includes("Global leaderboard")
+      && (document.body.textContent || "").includes("Rivalry"), { timeout: SHORT_TIMEOUT_MS });
+    log("PASS leaderboard and rival duel localize to zh-CN and back to English without reload");
 
 
     // Preserve the API cross-check for this unique user after five distinct

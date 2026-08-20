@@ -228,6 +228,42 @@ test("Task 4 resources cover profile, tier, school, and accessibility copy", () 
     assert.equal(typeof I18N.resources["zh-CN"][key], "string", `missing Chinese key ${key}`);
   }
 });
+
+test("Task 5 resources cover aggregate, retry, finalized, practice, and accessible reveal copy", () => {
+  const { I18N } = loadGlobal();
+  const requiredKeys = [
+    "reveal.celebrationGreat", "reveal.celebrationGood", "reveal.celebrationAccuracy", "reveal.celebrationScore",
+    "reveal.practiceFeedback", "reveal.practiceFeedbackBody", "reveal.practiceScore", "reveal.caseScore",
+    "reveal.feedbackOnly", "reveal.scoreSource", "reveal.afterTimeAdjustment", "reveal.accuracy",
+    "reveal.accuracyDescription", "reveal.time", "reveal.elapsedSeconds", "reveal.scoreMultiplier", "reveal.tierResults",
+    "reveal.university", "reveal.lac", "reveal.tierPick", "reveal.tierHit", "reveal.tierMiss",
+    "reveal.actualTier", "reveal.noUniversityClaim", "reveal.noLacClaim", "reveal.universityTierPoints",
+    "reveal.lacTierPoints", "reveal.noUniversityIncorrect", "reveal.noUniversityCorrect",
+    "reveal.noLacIncorrect", "reveal.noLacCorrect", "reveal.selectionPoints", "reveal.timeBreakdown",
+    "reveal.schoolBySchool", "reveal.universitiesTier", "reveal.lacsTier", "reveal.admittedStamp",
+    "reveal.enrolledAt", "reveal.admittedOn", "reveal.overallRanking", "reveal.currentAverage",
+    "reveal.thisCaseContributed", "reveal.tryAgain", "reveal.nextProfile", "reveal.allProfilesPlayed",
+    "reveal.retryCase", "reveal.otherSchoolsSkipped", "reveal.resultSkipped", "reveal.resultCorrect",
+    "reveal.resultWrong", "reveal.resultMissed", "reveal.admit", "reveal.notAdmit", "reveal.resultRowAria"
+  ];
+  for (const key of requiredKeys) {
+    assert.equal(typeof I18N.resources.en[key], "string", `missing English key ${key}`);
+    assert.equal(typeof I18N.resources["zh-CN"][key], "string", `missing Chinese key ${key}`);
+    assert.notEqual(I18N.resources.en[key], I18N.resources["zh-CN"][key], `untranslated ${key}`);
+  }
+
+  const zh = I18NForLocale("zh-CN");
+  assert.equal(zh.t("reveal.retryCase", { seconds: 4 }), "重试案件（4 秒）");
+  assert.equal(zh.t("reveal.elapsedSeconds", { seconds: 12 }), "12 秒");
+  assert.equal(zh.t("reveal.scoreMultiplier", { multiplier: "0.82" }), "分数乘数 ×0.82");
+  assert.equal(zh.t("reveal.actualTier", { tier: "T20" }), "实际层级 · T20");
+  assert.equal(zh.t("reveal.otherSchoolsSkipped", { count: 3 }), "其余 3 所学校——已正确跳过");
+  assert.equal(
+    zh.t("reveal.resultRowAria", { school: "Harvard", status: "正确录取", outcome: "已录取" }),
+    "Harvard：正确录取。已录取。"
+  );
+});
+
 test("all stable tier codes have localized range resources without changing identifiers", () => {
   const { I18N } = loadGlobal();
   const { sandbox } = loadScript(tiersSource);

@@ -97,6 +97,7 @@ function ConfettiBurst({ x, y, active }) {
 
 // ─── Celebration banner ───────────────────────────────────────────────────────
 function CelebrationBanner({ score, accuracy }) {
+  const { t } = window.I18N.useI18n();
   if (score <= 5) return null;
   const isGreat = score >= 80;
   const isGood = score >= 60;
@@ -111,15 +112,15 @@ function CelebrationBanner({ score, accuracy }) {
       borderRadius: "var(--r-lg)", padding: "var(--sp-4) var(--sp-5)", marginBottom: "var(--sp-4)",
       display: "flex", alignItems: "center", gap: "var(--sp-3)",
     }}>
-      <span style={{ fontSize: "var(--fs-h2)", lineHeight: 1 }}>{isGreat ? "🎯" : "🎉"}</span>
+      <span style={{ fontSize: "var(--fs-h2)", lineHeight: 1 }} aria-hidden="true">{isGreat ? "🎯" : "🎉"}</span>
       <div>
         <div style={{ fontSize: "var(--fs-md)", fontWeight: 600, color: "var(--accent-ok-fg)" }}>
-          {isGreat ? "Sharp eye!" : "Nice work!"}
+          {isGreat ? t("reveal.celebrationGreat") : t("reveal.celebrationGood")}
         </div>
         <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-tertiary)", marginTop: "var(--sp-1)" }}>
           {isGreat
-            ? `${accuracy}% accuracy on admits — you read this profile well.`
-            : `You scored ${score}/100 on this case.`}
+            ? t("reveal.celebrationAccuracy", { accuracy })
+            : t("reveal.celebrationScore", { score })}
         </div>
       </div>
     </div>
@@ -190,6 +191,7 @@ function Phase4Results({
   onTryAgain, onRetry, onFinalizeScoring, onNext, hasNext,
   isPractice
 }) {
+  const { t, formatDate } = window.I18N.useI18n();
   const showDetails = !!isPractice || !!scoringFinalized;
   const feedback = useMemo(() => {
     if (showDetails) {
@@ -270,13 +272,13 @@ function Phase4Results({
       {showDetails && <ProfileCollapsedSummary profile={profile} onExpand={onTryAgain} />}
 
       <div className="section-head">
-        <h2>The verdict</h2>
+        <h2>{t("reveal.title")}</h2>
         <span className="sub">{profile.id}</span>
       </div>
       {isPractice && (
-        <div className="callout" role="status" style={{ marginBottom: "var(--sp-4)" }}>
+        <div className="callout" role="status" data-testid="practice-feedback" style={{ marginBottom: "var(--sp-4)" }}>
           <i className="ti ti-info-circle" aria-hidden="true" />
-          <div><strong>Practice feedback</strong> · not recorded and does not affect your score.</div>
+          <div><strong>{t("reveal.practiceFeedback")}</strong> · {t("reveal.practiceFeedbackBody")}</div>
         </div>
       )}
 
@@ -285,52 +287,54 @@ function Phase4Results({
 
       {/* Score cards */}
       <div className="grid grid-2 stagger" style={{ marginBottom: "var(--sp-5)" }}>
-        <div className="card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
-          <div className="label">{isPractice ? "Practice score" : "Case score"}</div>
+        <div className="card" data-testid="results-score-card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
+          <div className="label">{isPractice ? t("reveal.practiceScore") : t("reveal.caseScore")}</div>
           <div className="score-pop" style={{ marginTop: "var(--sp-2)", color: "var(--text-primary)" }}>
             <AnimatedNum value={Math.round(finalScore)} format={n => String(Math.round(n))} />
           </div>
           <div className="label" style={{ color: "var(--text-tertiary)", marginTop: "var(--sp-2)" }}>
-            {isPractice ? "feedback only · out of 100" : <>from this profile · out of 100{timeMult < 1 ? " · after time adjustment" : ""}</>}
+            {isPractice
+              ? t("reveal.feedbackOnly")
+              : <>{t("reveal.scoreSource")}{timeMult < 1 ? t("reveal.afterTimeAdjustment") : ""}</>}
           </div>
         </div>
-        <div className="card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
-          <div className="label">Accuracy</div>
+        <div className="card" data-testid="results-accuracy-card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
+          <div className="label">{t("reveal.accuracy")}</div>
           <div className="score-pop" style={{ marginTop: "var(--sp-2)" }}>
             <AnimatedNum value={accuracy} format={n => Math.round(n) + "%"} />
           </div>
           <div className="label" style={{ color: "var(--text-tertiary)", marginTop: "var(--sp-2)" }}>
-            selection overlap with admits in view
+            {t("reveal.accuracyDescription")}
           </div>
         </div>
         {!isPractice && (
-          <div className="card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
-            <div className="label">Time</div>
+          <div className="card" data-testid="results-time-card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
+            <div className="label">{t("reveal.time")}</div>
             <div className="score-pop" style={{ marginTop: "var(--sp-2)" }}>
-              {`${elapsedSeconds}s`}
+              {t("reveal.elapsedSeconds", { seconds: elapsedSeconds })}
             </div>
             <div className="label" style={{ color: "var(--text-tertiary)", marginTop: "var(--sp-2)" }}>
-              {`Score multiplier ×${timeMult.toFixed(2)}`}
+              {t("reveal.scoreMultiplier", { multiplier: timeMult.toFixed(2) })}
             </div>
           </div>
         )}
       </div>
 
-      {showDetails && <>
+      {showDetails && <div data-testid="reveal-details">
       {/* Tier result */}
       <div className="card stagger" style={{ marginBottom: "var(--sp-4)" }}>
-        <div className="label" style={{ marginBottom: "var(--sp-3)" }}>Tier results</div>
+        <div className="label" style={{ marginBottom: "var(--sp-3)" }}>{t("reveal.tierResults")}</div>
         <TierResultRow
-          kind="University"
-          pick={noUniClaim ? "Applicant was not admitted to any T50 University" : universityTierPick}
+          kind={t("reveal.university")}
+          pick={noUniClaim ? t("reveal.noUniversityClaim") : universityTierPick}
           hit={noUniClaim ? !hasUniAdmit : uniAvail.hit}
           admits={uniAvail.all.filter(a => uniAvail.admitted.has(a.key)).map(a => a.name)}
           actualTier={actualTier}
         />
         <hr className="sep" />
         <TierResultRow
-          kind="LAC"
-          pick={noLacClaim ? "Applicant was not admitted to any T20 LAC" : lacTierPick}
+          kind={t("reveal.lac")}
+          pick={noLacClaim ? t("reveal.noLacClaim") : lacTierPick}
           hit={noLacClaim ? !hasLacAdmit : lacAvail.hit}
           admits={lacAvail.all.filter(a => lacAvail.admitted.has(a.key)).map(a => a.name)}
           actualTier={null}
@@ -340,8 +344,8 @@ function Phase4Results({
         <div style={{ marginTop: "var(--sp-3)", paddingTop: "var(--sp-3)", borderTop: "0.5px solid var(--border-1)" }}>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
             <span style={{ color: "var(--text-secondary)" }}>
-              <i className="ti ti-target-arrow" style={{ marginRight: 6 }} />
-              {noUniClaim ? "Applicant was not admitted to any T50 University" : "Reach · university tier"}
+              <i className="ti ti-target-arrow" style={{ marginRight: 6 }} aria-hidden="true" />
+              {noUniClaim ? t("reveal.noUniversityClaim") : t("reveal.universityTierPoints")}
             </span>
             <span className="num" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-ok-fg)" }}>
               +{uniPts}
@@ -350,14 +354,14 @@ function Phase4Results({
           {noUniClaim && (
             <div className="label" style={{ color: "var(--text-tertiary)", padding: "var(--sp-1) 0 var(--sp-2)" }}>
               {hasUniAdmit
-                ? "Claim was incorrect — applicant had a top-50 university admit"
-                : "Correctly identified no top-50 university admit"}
+                ? t("reveal.noUniversityIncorrect")
+                : t("reveal.noUniversityCorrect")}
             </div>
           )}
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
             <span style={{ color: "var(--text-secondary)" }}>
-              <i className="ti ti-building-monument" style={{ marginRight: 6 }} />
-              {noLacClaim ? "Applicant was not admitted to any T20 LAC" : "LAC tier"}
+              <i className="ti ti-building-monument" style={{ marginRight: 6 }} aria-hidden="true" />
+              {noLacClaim ? t("reveal.noLacClaim") : t("reveal.lacTierPoints")}
             </span>
             <span className="num" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-ok-fg)" }}>
               +{lacPts}
@@ -366,14 +370,14 @@ function Phase4Results({
           {noLacClaim && (
             <div className="label" style={{ color: "var(--text-tertiary)", padding: "var(--sp-1) 0 var(--sp-2)" }}>
               {hasLacAdmit
-                ? "Claim was incorrect — applicant had a top-20 LAC admit"
-                : "Correctly identified no top-20 LAC admit"}
+                ? t("reveal.noLacIncorrect")
+                : t("reveal.noLacCorrect")}
             </div>
           )}
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
             <span style={{ color: "var(--text-secondary)" }}>
-              <i className="ti ti-checks" style={{ marginRight: 6 }} />
-              Selection · admit overlap
+              <i className="ti ti-checks" style={{ marginRight: 6 }} aria-hidden="true" />
+              {t("reveal.selectionPoints")}
             </span>
             <span className="num" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-ok-fg)" }}>
               +{selectionPts}
@@ -382,8 +386,8 @@ function Phase4Results({
           {elapsedSeconds != null && (
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
               <span style={{ color: "var(--text-secondary)" }}>
-                <i className="ti ti-clock" style={{ marginRight: 6 }} />
-                Time · {elapsedSeconds}s
+                <i className="ti ti-clock" style={{ marginRight: 6 }} aria-hidden="true" />
+                {t("reveal.timeBreakdown", { seconds: elapsedSeconds })}
               </span>
               <span className="num" style={{ fontFamily: "var(--font-mono)", color: "var(--text-tertiary)" }}>
                 ×{timeMult.toFixed(2)}
@@ -396,11 +400,11 @@ function Phase4Results({
       {/* School breakdown */}
       {(uniRows.length + lacRows.length) > 0 && (
         <div className="card stagger" style={{ marginBottom: "var(--sp-4)" }}>
-          <div className="label" style={{ marginBottom: "var(--sp-2)" }}>School-by-school</div>
+          <div className="label" style={{ marginBottom: "var(--sp-2)" }}>{t("reveal.schoolBySchool")}</div>
           {uniRows.length > 0 && (
             <>
               <div className="label" style={{ marginTop: "var(--sp-2)", marginBottom: "var(--sp-1)", color: "var(--text-tertiary)" }}>
-                Universities · {universityTierPick}
+                {t("reveal.universitiesTier", { tier: universityTierPick })}
               </div>
               <ResultGroup rows={uniRows} />
             </>
@@ -408,7 +412,7 @@ function Phase4Results({
           {lacRows.length > 0 && (
             <>
               <div className="label" style={{ marginTop: "var(--sp-4)", marginBottom: "var(--sp-1)", color: "var(--text-tertiary)" }}>
-                LACs · {lacTierPick}
+                {t("reveal.lacsTier", { tier: lacTierPick })}
               </div>
               <ResultGroup rows={lacRows} />
             </>
@@ -419,9 +423,9 @@ function Phase4Results({
       {/* Teaching points */}
       {(profile.game_metadata?.teaching_points || []).length > 0 && (
         <div className="callout callout--teach stagger" style={{ marginBottom: "var(--sp-4)", alignItems: "flex-start" }}>
-          <i className="ti ti-bulb" />
+          <i className="ti ti-bulb" aria-hidden="true" />
           <div>
-            <div className="label" style={{ color: "var(--accent-info-fg)", marginBottom: "var(--sp-2)" }}>What this case teaches</div>
+            <div className="label" style={{ color: "var(--accent-info-fg)", marginBottom: "var(--sp-2)" }}>{t("reveal.teaching")}</div>
             <ul style={{ margin: 0, paddingLeft: "var(--sp-4)" }}>
               {profile.game_metadata.teaching_points.map((p, i) =>
                 <li key={i} style={{ margin: "var(--sp-1) 0" }}>{p}</li>
@@ -432,42 +436,44 @@ function Phase4Results({
       )}
 
       {/* Final banner */}
-      <div className="final-banner fade-in">
-        <span className="stamp-mark" aria-hidden="true">Admitted</span>
-        <span className="label">Enrolled at</span>
+      <div className="final-banner fade-in" data-testid="final-banner">
+        <span className="stamp-mark" aria-hidden="true">{t("reveal.admittedStamp")}</span>
+        <span className="label">{t("reveal.enrolledAt")}</span>
         <div className="school">{finalDecision?.school ?? "—"}</div>
-        <div className="date">Admitted on {formatDate(finalDecision?.decision_date)}</div>
+        <div className="date">{t("reveal.admittedOn", { date: formatDate(finalDecision?.decision_date) })}</div>
       </div>
 
       {!isPractice && rank && (
         <div className="card stagger" style={{ marginTop: "var(--sp-4)" }}>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline", marginBottom: "var(--sp-3)" }}>
-            <div className="label">Overall ranking</div>
+            <div className="label">{t("reveal.overallRanking")}</div>
             <span className="badge badge--neutral" style={{ fontFamily: "var(--font-mono)" }}>
-              <span className="num">{average ?? 0}</span> avg · current average
+              {t("reveal.currentAverage", { average: average ?? 0 })}
             </span>
           </div>
           <RankProgressBar rank={rank} totalPoints={average ?? 0} />
           <div className="row" style={{ marginTop: "var(--sp-4)", justifyContent: "space-between", flexWrap: "wrap", gap: "var(--sp-2)" }}>
-            <span className="label" style={{ color: "var(--text-tertiary)" }}>This case contributed</span>
+            <span className="label" style={{ color: "var(--text-tertiary)" }}>{t("reveal.thisCaseContributed")}</span>
             <span className="num" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-ok-fg)" }}>
               {Math.round(finalScore)}/100
             </span>
           </div>
         </div>
       )}
-      </>}
+      </div>}
 
       {showDetails ? (
         <div className="row" style={{ justifyContent: "space-between", marginTop: "var(--sp-6)" }}>
-          <Btn variant="ghost" onClick={onTryAgain} icon="rotate">Try again</Btn>
-          <Btn onClick={onNext} disabled={!hasNext} iconRight="arrow-right">
-            {hasNext ? "Next profile" : "All profiles played"}
+          <Btn variant="ghost" onClick={onTryAgain} icon="rotate" testId="results-try-again">{t("reveal.tryAgain")}</Btn>
+          <Btn onClick={onNext} disabled={!hasNext} iconRight="arrow-right" testId="results-next">
+            {hasNext ? t("reveal.nextProfile") : t("reveal.allProfilesPlayed")}
           </Btn>
         </div>
       ) : firstScoringReveal && retryLeft > 0 ? (
         <div className="row" style={{ justifyContent: "flex-end", marginTop: "var(--sp-6)" }}>
-          <Btn variant="ghost" onClick={handleScoringRetry} icon="refresh" testId="retry-case">Retry case ({retryLeft}s)</Btn>
+          <Btn variant="ghost" onClick={handleScoringRetry} icon="refresh" testId="retry-case">
+            {t("reveal.retryCase", { seconds: retryLeft })}
+          </Btn>
         </div>
       ) : null}
     </div>
@@ -475,6 +481,7 @@ function Phase4Results({
 }
 
 function TierResultRow({ kind, pick, hit, admits, actualTier }) {
+  const { t } = window.I18N.useI18n();
   return (
     <div className="row" style={{ justifyContent: "space-between", gap: "var(--sp-4)", alignItems: "flex-start", flexWrap: "wrap" }}>
       <div className="row" style={{ gap: "var(--sp-3)", alignItems: "center", flexWrap: "nowrap" }}>
@@ -485,12 +492,12 @@ function TierResultRow({ kind, pick, hit, admits, actualTier }) {
           background: hit ? "var(--accent-ok-bg)" : "var(--accent-warn-bg)",
           color: hit ? "var(--accent-ok-fg)" : "var(--accent-warn-fg)",
         }}>
-          <i className={"ti ti-" + (hit ? "check" : "x")} />
+          <i className={"ti ti-" + (hit ? "check" : "x")} aria-hidden="true" />
         </span>
         <div>
-          <div style={{ fontSize: "var(--fs-md)", fontWeight: 500 }}>{kind} tier — {pick}</div>
+          <div style={{ fontSize: "var(--fs-md)", fontWeight: 500 }}>{t("reveal.tierPick", { kind, pick })}</div>
           <div className="label" style={{ marginTop: "var(--sp-1)", color: "var(--text-tertiary)" }}>
-            {hit ? "Hit · matched at least one admit" : "Miss · no admits in this tier"}
+            {hit ? t("reveal.tierHit") : t("reveal.tierMiss")}
           </div>
         </div>
       </div>
@@ -502,7 +509,7 @@ function TierResultRow({ kind, pick, hit, admits, actualTier }) {
         ) : (
           actualTier ? (
             <div className="label" style={{ color: "var(--text-tertiary)" }}>
-              Actual tier · <span style={{ color: "var(--text-secondary)" }}>{actualTier}</span>
+              {t("reveal.actualTier", { tier: actualTier })}
             </div>
           ) : null
         )}
@@ -512,6 +519,7 @@ function TierResultRow({ kind, pick, hit, admits, actualTier }) {
 }
 
 function ResultGroup({ rows }) {
+  const { t } = window.I18N.useI18n();
   // Schools where something interesting happened: a pick (right or wrong),
   // or an admit the player missed. Everything else is a quiet skip — group
   // those into a single collapsed summary so the list stays scannable.
@@ -524,8 +532,8 @@ function ResultGroup({ rows }) {
       {quiet.length > 0 && (
         <details className="collapsible" style={{ borderTop: interesting.length > 0 ? "0.5px solid var(--border-1)" : "none", marginTop: "var(--sp-1)" }}>
           <summary>
-            <i className="ti ti-chevron-down chev" />
-            {quiet.length} other schools — correctly skipped
+            <i className="ti ti-chevron-down chev" aria-hidden="true" />
+            {t("reveal.otherSchoolsSkipped", { count: quiet.length })}
           </summary>
           <div className="body" style={{ padding: 0 }}>
             {quiet.map(r => <ResultRow key={r.key} row={r} />)}
@@ -537,11 +545,13 @@ function ResultGroup({ rows }) {
 }
 
 function ResultRow({ row }) {
-  let icoCls = "mid", icoIcon = "minus", note = "Skipped · was not admitted", deltaCls = "";
-  if (row.status === "correct") { icoCls = "ok"; icoIcon = "check"; note = "Correct admit"; deltaCls = "plus"; }
-  else if (row.status === "wrong") { icoCls = "bad"; icoIcon = "x"; note = "Wrong — applicant did not get in"; deltaCls = "minus"; }
-  else if (row.status === "missed") { icoCls = "miss"; icoIcon = "minus"; note = "Missed · this was actually an admit"; }
-  else { icoCls = "mid"; icoIcon = "minus"; note = "Skipped · was not admitted"; }
+  const { t } = window.I18N.useI18n();
+  let icoCls = "mid", icoIcon = "minus", note = t("reveal.resultSkipped"), deltaCls = "";
+  if (row.status === "correct") { icoCls = "ok"; icoIcon = "check"; note = t("reveal.resultCorrect"); deltaCls = "plus"; }
+  else if (row.status === "wrong") { icoCls = "bad"; icoIcon = "x"; note = t("reveal.resultWrong"); deltaCls = "minus"; }
+  else if (row.status === "missed") { icoCls = "miss"; icoIcon = "minus"; note = t("reveal.resultMissed"); }
+  else { icoCls = "mid"; icoIcon = "minus"; note = t("reveal.resultSkipped"); }
+  const outcome = row.wasAdmit ? t("reveal.admit") : t("reveal.notAdmit");
 
   const animClass = row.status === "correct" ? " ao-correct-row"
     : row.status === "wrong" ? " ao-wrong-row"
@@ -558,11 +568,18 @@ function ResultRow({ row }) {
   }, [row.status]);
 
   return (
-    <div className={"result-row" + animClass} ref={rowRef} style={{ position: "relative", overflow: "visible" }}>
+    <div
+      className={"result-row" + animClass}
+      ref={rowRef}
+      role="group"
+      aria-label={t("reveal.resultRowAria", { school: row.name, status: note, outcome })}
+      data-result-status={row.status}
+      style={{ position: "relative", overflow: "visible" }}
+    >
       {burst && rowRef.current && (
         <ConfettiBurst active={burst} x={14} y={14} />
       )}
-      <span className={"ico " + icoCls}><i className={"ti ti-" + icoIcon} /></span>
+      <span className={"ico " + icoCls} aria-hidden="true"><i className={"ti ti-" + icoIcon} /></span>
       <div className="row" style={{ alignItems: "center", gap: "var(--sp-2)", flex: 1, minWidth: 0, flexWrap: "nowrap" }}>
         {window.SchoolLogo ? <SchoolLogo name={row.name} size={22} /> : null}
         <div style={{ minWidth: 0 }}>
@@ -570,21 +587,12 @@ function ResultRow({ row }) {
           <div className="label" style={{ marginTop: "var(--sp-1)", color: "var(--text-tertiary)" }}>{note}</div>
         </div>
       </div>
-      {row.wasAdmit ? <Badge kind="ok">Admit</Badge> : <Badge>Not admit</Badge>}
+      {row.wasAdmit ? <Badge kind="ok">{t("reveal.admit")}</Badge> : <Badge>{t("reveal.notAdmit")}</Badge>}
       <span className={"delta " + deltaCls} style={{ fontVariantNumeric: "tabular-nums", textAlign: "right", minWidth: "3ch" }}>
         {row.delta > 0 ? `+${row.delta}` : row.delta === 0 ? "0" : `${row.delta}`}
       </span>
     </div>
   );
-}
-
-function formatDate(isoLike) {
-  if (!isoLike) return "";
-  const parts = isoLike.split("-");
-  if (parts.length !== 3) return isoLike;
-  const [y, m, d] = parts.map(Number);
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${months[m - 1]} ${d}, ${y}`;
 }
 
 Object.assign(window, { Phase4Results, scoreFor });
