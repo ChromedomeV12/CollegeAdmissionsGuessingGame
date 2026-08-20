@@ -315,7 +315,7 @@ async function main() {
     // Theme persistence remains covered on the new signed-in landing screen.
     const themeBefore = await page.evaluate(() => document.documentElement.dataset.theme || "dark");
     const expectedTheme = themeBefore === "light" ? "dark" : "light";
-    await page.click('[aria-label="Toggle theme"]');
+    await page.click('[data-testid="theme-toggle"]');
     await page.waitForFunction(
       (expected) => document.documentElement.dataset.theme === expected && localStorage.getItem("ao_theme") === expected,
       { timeout: SHORT_TIMEOUT_MS },

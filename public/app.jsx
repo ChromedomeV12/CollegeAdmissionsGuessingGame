@@ -720,7 +720,7 @@ function App() {
             <button className="btn-ghost" data-testid="nav-leaderboard" onClick={openLeaderboard} aria-label="Open leaderboard">
               <i className="ti ti-trophy" aria-hidden="true" /> Leaderboard
             </button>
-            <button className="btn-ghost" onClick={toggleTheme} aria-label="Toggle theme">
+            <button className="btn-ghost" data-testid="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
               <i className={`ti ti-${theme === "dark" ? "sun" : "moon"}`} aria-hidden="true" />
             </button>
             <LanguageToggle />
@@ -763,7 +763,7 @@ function App() {
               </button>
             </>
           )}
-          <button className="btn-ghost" onClick={toggleTheme} aria-label="Toggle theme">
+          <button className="btn-ghost" data-testid="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
             <i className={`ti ti-${theme === "dark" ? "sun" : "moon"}`} aria-hidden="true" />
           </button>
           <LanguageToggle />
