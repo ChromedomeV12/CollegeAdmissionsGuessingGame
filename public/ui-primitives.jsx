@@ -25,7 +25,38 @@ function Pill({ active, onClick, children, disabled }) {
   );
 }
 
-function Btn({ onClick, children, variant, disabled, icon, iconRight, ariaLabel, title }) {
+function LanguageToggle() {
+  const { lang, toggleLanguage, t } = window.I18N.useI18n();
+  return (
+    <button
+      type="button"
+      className="btn-ghost"
+      data-testid="language-toggle"
+      onClick={toggleLanguage}
+      aria-label={t("nav.toggleLanguage")}
+    >
+      <i className="ti ti-world" aria-hidden="true" />
+      {lang === "en" ? "中文" : "EN"}
+    </button>
+  );
+}
+
+function inferredTestId(children) {
+  const text = React.Children.toArray(children)
+    .filter(child => typeof child === "string" || typeof child === "number")
+    .join("")
+    .trim();
+  if (text === "Play") return "home-play";
+  if (text === "Start guessing") return "phase-start";
+  if (text === "Lock in predictions") return "phase-lock";
+  if (text === "Reveal results") return "phase-reveal";
+  if (text.startsWith("Retry case (")) return "retry-case";
+  if (text === "Add rival") return "rival-add";
+  if (text === "Duel") return "duel-open";
+  return undefined;
+}
+
+function Btn({ onClick, children, variant, disabled, icon, iconRight, ariaLabel, title, testId }) {
   const cls = "btn" + (variant === "ghost" ? " btn--ghost" : "");
   // Icon-only buttons (no text children) must expose an accessible name.
   const iconOnly = !children;
@@ -37,6 +68,7 @@ function Btn({ onClick, children, variant, disabled, icon, iconRight, ariaLabel,
       disabled={disabled}
       aria-label={iconOnly ? (ariaLabel || title || undefined) : ariaLabel}
       title={title}
+      data-testid={testId || inferredTestId(children)}
     >
       {icon ? <i className={`ti ti-${icon}`} style={{ fontSize: "var(--fs-md)" }} /> : null}
       {children}
@@ -50,7 +82,6 @@ function Btn({ onClick, children, variant, disabled, icon, iconRight, ariaLabel,
 function Tabs({ tabs, active, onChange, idBase = "tabs" }) {
   const tabRefs = useRef([]);
   const count = tabs.length;
-
   function onKeyDown(e) {
     const activeIdx = tabs.findIndex(t => t.id === active);
     let next = null;
@@ -78,6 +109,7 @@ function Tabs({ tabs, active, onChange, idBase = "tabs" }) {
           aria-controls={`${idBase}-panel-${t.id}`}
           tabIndex={active === t.id ? 0 : -1}
           className="tab"
+          data-testid={t.label === "Correct choices" ? "correct-choices-tab" : undefined}
           onClick={() => onChange(t.id)}
         >
           {t.label}
@@ -200,4 +232,4 @@ function RankProgressBar({ rank, totalPoints }) {
   );
 }
 
-Object.assign(window, { Badge, Pill, Btn, Tabs, Stepper, difficultyKind, ecTierKind, AnimatedNum, RankChip, RankProgressBar });
+Object.assign(window, { Badge, Pill, Btn, Tabs, Stepper, difficultyKind, ecTierKind, AnimatedNum, RankChip, RankProgressBar, LanguageToggle });

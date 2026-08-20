@@ -85,6 +85,9 @@ function AuthScreen({ onLogin }) {
         </section>
 
         <section className="card auth-panel">
+          <div className="row" style={{ justifyContent: "flex-end", marginBottom: "var(--sp-4)" }}>
+            <LanguageToggle />
+          </div>
           <div className="stack" style={{ gap: "var(--sp-5)" }}>
             <div>
               <span className="eyebrow">Player access</span>
@@ -95,8 +98,8 @@ function AuthScreen({ onLogin }) {
             </div>
 
             <div className="seg" role="group" aria-label="Authentication mode">
-              <button type="button" aria-pressed={mode === "login"} onClick={() => switchMode("login")}>Log in</button>
-              <button type="button" aria-pressed={mode === "register"} onClick={() => switchMode("register")}>Create account</button>
+              <button type="button" data-testid="auth-mode-login" aria-pressed={mode === "login"} onClick={() => switchMode("login")}>Log in</button>
+              <button type="button" data-testid="auth-mode-register" aria-pressed={mode === "register"} onClick={() => switchMode("register")}>Create account</button>
             </div>
 
             <div className="stack" style={{ gap: "var(--sp-3)" }}>
@@ -155,7 +158,7 @@ function AuthScreen({ onLogin }) {
               </div>
             )}
 
-            <button type="button" className="btn-primary" onClick={handleSubmit} disabled={loading} aria-busy={loading} style={{ width: "100%" }}>
+            <button type="button" className="btn-primary" data-testid="auth-submit" onClick={handleSubmit} disabled={loading} aria-busy={loading} style={{ width: "100%" }}>
               {loading ? "Please wait…" : mode === "login" ? "Log in" : "Create account"}
               <i className="ti ti-arrow-right" aria-hidden="true" />
             </button>

@@ -691,13 +691,14 @@ function App() {
             <h1>Admissions <em>Oracle</em></h1>
           </div>
           <div className="row">
-            <button className="btn-ghost" onClick={() => { setShowLeaderboard(false); setShowHome(true); }} aria-label="Open home">
+            <button className="btn-ghost" data-testid="nav-home" onClick={() => { setShowLeaderboard(false); setShowHome(true); }} aria-label="Open home">
               <i className="ti ti-home" aria-hidden="true" /> Home
             </button>
-            <button className="btn-ghost" onClick={() => { setShowLeaderboard(false); setShowHome(false); setPhase(0); }} aria-label="Back to applicant menu">
+            <button className="btn-ghost" data-testid="nav-menu" onClick={() => { setShowLeaderboard(false); setShowHome(false); setPhase(0); }} aria-label="Back to applicant menu">
               <i className="ti ti-arrow-left" aria-hidden="true" /> Menu
             </button>
-            <button className="btn-ghost" onClick={handleLogout} aria-label="Log out">
+            <LanguageToggle />
+            <button className="btn-ghost" data-testid="nav-logout" onClick={handleLogout} aria-label="Log out">
               <i className="ti ti-logout" aria-hidden="true" /> Log out
             </button>
           </div>
@@ -716,14 +717,15 @@ function App() {
             <h1>Admissions <em>Oracle</em></h1>
           </div>
           <div className="row">
-            <button className="btn-ghost" onClick={openLeaderboard} aria-label="Open leaderboard">
+            <button className="btn-ghost" data-testid="nav-leaderboard" onClick={openLeaderboard} aria-label="Open leaderboard">
               <i className="ti ti-trophy" aria-hidden="true" /> Leaderboard
             </button>
             <button className="btn-ghost" onClick={toggleTheme} aria-label="Toggle theme">
               <i className={`ti ti-${theme === "dark" ? "sun" : "moon"}`} aria-hidden="true" />
             </button>
+            <LanguageToggle />
             <AvgRankChip rank={rank} average={average} />
-            <button className="btn-ghost" onClick={handleLogout} aria-label="Log out">
+            <button className="btn-ghost" data-testid="nav-logout" onClick={handleLogout} aria-label="Log out">
               <i className="ti ti-logout" aria-hidden="true" /> Log out
             </button>
           </div>
@@ -742,11 +744,11 @@ function App() {
         </div>
         <div className="row">
           {phase === 0 && (
-            <button className="btn-ghost" onClick={() => setShowHome(true)} aria-label="Open home">
+            <button className="btn-ghost" data-testid="nav-home" onClick={() => setShowHome(true)} aria-label="Open home">
               <i className="ti ti-home" aria-hidden="true" /> Home
             </button>
           )}
-          <button className="btn-ghost" onClick={openLeaderboard} aria-label="Open leaderboard">
+          <button className="btn-ghost" data-testid="nav-leaderboard" onClick={openLeaderboard} aria-label="Open leaderboard">
             <i className="ti ti-trophy" aria-hidden="true" /> Leaderboard
           </button>
           {phase > 0 && profileIdx !== null && (
@@ -756,7 +758,7 @@ function App() {
                 <span className="dot" />
                 <span>Phase {phase} / 4</span>
               </div>
-              <button className="btn-ghost" onClick={goNextProfile} aria-label="Back to applicant menu">
+              <button className="btn-ghost" data-testid="nav-menu" onClick={goNextProfile} aria-label="Back to applicant menu">
                 <i className="ti ti-list" aria-hidden="true" /> Menu
               </button>
             </>
@@ -764,8 +766,9 @@ function App() {
           <button className="btn-ghost" onClick={toggleTheme} aria-label="Toggle theme">
             <i className={`ti ti-${theme === "dark" ? "sun" : "moon"}`} aria-hidden="true" />
           </button>
+          <LanguageToggle />
           <AvgRankChip rank={rank} average={average} />
-          <button className="btn-ghost" onClick={handleLogout} aria-label="Log out">
+          <button className="btn-ghost" data-testid="nav-logout" onClick={handleLogout} aria-label="Log out">
             <i className="ti ti-logout" aria-hidden="true" /> Log out
           </button>
         </div>
@@ -973,6 +976,7 @@ function LeaderboardScreen({ username, average, rank, token }) {
         >
           <input
             type="text"
+            data-testid="rival-input"
             value={rivalInput}
             onChange={(e) => setRivalInput(e.target.value)}
             placeholder="Add a rival by username"
@@ -1046,4 +1050,5 @@ function LeaderboardScreen({ username, average, rank, token }) {
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(<App />);
+const { LanguageProvider } = window.I18N;
+root.render(<LanguageProvider><App /></LanguageProvider>);
