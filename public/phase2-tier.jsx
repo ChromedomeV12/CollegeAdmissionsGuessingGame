@@ -1,25 +1,26 @@
 // Phase 2 — Tier selection
 
 function ProfileCollapsedSummary({ profile, onExpand }) {
+  const { t, translateEnum } = window.I18N.useI18n();
   const d = profile.demographics || {};
   const sat = profile.test_scores?.sat;
   const act = profile.test_scores?.act;
-  const test = sat ? `SAT ${sat.superscore_total ?? "—"}` : (act ? `ACT ${act.composite ?? "—"}` : "Test-optional");
+  const test = sat ? `SAT ${sat.superscore_total ?? "—"}` : (act ? `ACT ${act.composite ?? "—"}` : t("profile.testOptional"));
   return (
     <div className="profile-collapsed-summary">
       <div className="row">
         <div className="who">{profile.id}</div>
         <div className="row" style={{ gap: "var(--sp-1)" }}>
-          <span className="chip">{d.gender || <span className="muted">—</span>}</span>
+          <span className="chip">{d.gender ? translateEnum("gender", d.gender) : <span className="muted">—</span>}</span>
           <span className="chip">{d.ethnicity || <span className="muted">—</span>}</span>
-          <span className="chip">{d.ses || <span className="muted">—</span>}</span>
+          <span className="chip">{d.ses ? translateEnum("income", d.ses) : <span className="muted">—</span>}</span>
           <span className="chip">{test}</span>
-          <span className="chip">GPA {profile.academic_profile?.gpa?.unweighted ?? <span className="muted">—</span>}</span>
-          <span className="chip">{profile.academic_profile?.course_rigor?.total_ap_courses ?? 0} APs</span>
+          <span className="chip">{t("profile.gpa")} {profile.academic_profile?.gpa?.unweighted ?? <span className="muted">—</span>}</span>
+          <span className="chip">{t("profile.apCount", { count: profile.academic_profile?.course_rigor?.total_ap_courses ?? 0 })}</span>
         </div>
       </div>
       <button className="btn btn--ghost" onClick={onExpand}>
-        <i className="ti ti-eye" style={{ fontSize: "var(--fs-md)" }} /> Review profile
+        <i className="ti ti-eye" style={{ fontSize: "var(--fs-md)" }} aria-hidden="true" /> {t("tier.profileReview")}
       </button>
     </div>
   );
@@ -27,6 +28,7 @@ function ProfileCollapsedSummary({ profile, onExpand }) {
 
 // Informational countdown aligned to the server attempt's authoritative start.
 function TimeBonusChip({ startedAt }) {
+  const { t } = window.I18N.useI18n();
   const startMs = Date.parse(startedAt || "");
   const [elapsed, setElapsed] = React.useState(() => Number.isFinite(startMs)
     ? Math.max(0, Math.floor((Date.now() - startMs) / 1000))
@@ -44,7 +46,7 @@ function TimeBonusChip({ startedAt }) {
   const fade = state === "full" ? 1 : Math.max(0.55, 1 - 0.45 * (elapsed - 30) / 90);
   return (
     <span style={{ marginLeft: "auto", opacity: fade, transition: "opacity .6s" }}>
-      <Badge kind={kind} icon="clock">Time bonus · {state}</Badge>
+      <Badge kind={kind} icon="clock">{t("tier.timeBonusState", { state: t(`tier.timeBonus${state[0].toUpperCase()}${state.slice(1)}`) })}</Badge>
     </span>
   );
 }
@@ -59,6 +61,7 @@ function Phase2Tier({
   onLock, onBack
 }) {
   const T = window.TIERS;
+  const { t } = window.I18N.useI18n();
 
   return (
     <div className="fade-in" data-screen-label="02 Tier">
@@ -68,34 +71,34 @@ function Phase2Tier({
 
       <div className="section-head">
         <div className="title-block">
-          <span className="eyebrow">Step 02</span>
-          <h2>Predict the ceiling</h2>
+          <span className="eyebrow">{t("tier.eyebrow")}</span>
+          <h2>{t("tier.title")}</h2>
         </div>
-        <span className="sub">Pick one university outcome and one LAC outcome.</span>
+        <span className="sub">{t("tier.instructions")}</span>
         {isPractice ? null : <TimeBonusChip startedAt={attemptStartedAt} />}
       </div>
 
       <div className="callout" style={{ marginBottom: "var(--sp-4)" }}>
-        <i className="ti ti-info-circle" />
+        <i className="ti ti-info-circle" aria-hidden="true" />
         <div>
-          Tiers are bands, not ranges — T10 means ranks 6-10 only, T20 means 11-20, and so on. Pick the band you think this applicant landed in. Your choices unlock the school list — pick carefully.
+          {t("tier.bandExplanation")}
         </div>
       </div>
 
       <div className="card stagger" style={{ marginBottom: "var(--sp-3)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "var(--sp-3)" }}>
-          <span className="label">Panel A · University tier</span>
-          <span className="chip">1 of {T.UNI_TIER_LIST.length}</span>
+          <span className="label">{t("tier.panelUniversity")}</span>
+          <span className="chip">{t("tier.choiceCount", { current: 1, total: T.UNI_TIER_LIST.length })}</span>
         </div>
         <div className="tier-grid tier-grid--uni" aria-disabled={noUniClaim}>
-          {T.UNI_TIER_LIST.map(t => (
+          {T.UNI_TIER_LIST.map(tierCode => (
             <TierPickCard
-              key={t}
-              label={t}
-              sublabel={T.TIER_RANGE[t]}
-              active={!noUniClaim && universityTierPick === t}
+              key={tierCode}
+              label={tierCode}
+              sublabel={t(`ranges.${tierCode}`)}
+              active={!noUniClaim && universityTierPick === tierCode}
               onClick={() => {
-                setUniversityTierPick(t === universityTierPick ? null : t);
+                setUniversityTierPick(tierCode === universityTierPick ? null : tierCode);
                 setNoUniClaim(false);
               }}
             />
@@ -103,8 +106,8 @@ function Phase2Tier({
         </div>
         <ClaimCard
           active={noUniClaim}
-          label="Applicant was not admitted to any T50 University"
-          hint="Claim this if the profile had zero admits in every configured top-50 university band."
+          label={t("tier.noUniversityClaim")}
+          hint={t("tier.noUniversityClaimHint")}
           onToggle={() => {
             setNoUniClaim(!noUniClaim);
             if (!noUniClaim) setUniversityTierPick(null);
@@ -114,31 +117,31 @@ function Phase2Tier({
 
       <div className="card stagger" style={{ marginBottom: "var(--sp-3)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "var(--sp-3)" }}>
-          <span className="label">Panel B · Liberal Arts College tier</span>
-          <span className="chip">1 of 3</span>
+          <span className="label">{t("tier.panelLac")}</span>
+          <span className="chip">{t("tier.choiceCount", { current: 1, total: T.LAC_TIER_LIST.length })}</span>
         </div>
         <div className="tier-grid tier-grid--lac" aria-disabled={noLacClaim}>
-          {T.LAC_TIER_LIST.map(t => (
+          {T.LAC_TIER_LIST.map(tierCode => (
             <TierPickCard
-              key={t}
-              label={t}
-              sublabel={T.TIER_RANGE[t]}
-              active={!noLacClaim && lacTierPick === t}
+              key={tierCode}
+              label={tierCode}
+              sublabel={t(`ranges.${tierCode}`)}
+              active={!noLacClaim && lacTierPick === tierCode}
               onClick={() => {
-                setLacTierPick(t === lacTierPick ? null : t);
+                setLacTierPick(tierCode === lacTierPick ? null : tierCode);
                 setNoLacClaim(false);
               }}
             />
           ))}
         </div>
         <div className="label" style={{ marginTop: "var(--sp-3)" }}>
-          LACs are ranked on a separate US News list.
+          {t("tier.lacSeparateRanking")}
         </div>
 
         <ClaimCard
           active={noLacClaim}
-          label="Applicant was not admitted to any T20 LAC"
-          hint="Claim this if the profile had zero admits in every configured top-20 LAC band."
+          label={t("tier.noLacClaim")}
+          hint={t("tier.noLacClaimHint")}
           onToggle={() => {
             setNoLacClaim(!noLacClaim);
             if (!noLacClaim) setLacTierPick(null);
@@ -148,13 +151,14 @@ function Phase2Tier({
 
       <hr className="divider" />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-3)" }}>
-        <Btn variant="ghost" onClick={onBack} icon="arrow-left">Back to profile</Btn>
+        <Btn variant="ghost" onClick={onBack} icon="arrow-left">{t("tier.back")}</Btn>
         <Btn
           onClick={onLock}
           disabled={!(universityTierPick || noUniClaim) || !(lacTierPick || noLacClaim)}
           iconRight="lock"
+          testId="phase-lock"
         >
-          Lock in predictions
+          {t("tier.lockPredictions")}
         </Btn>
       </div>
     </div>
@@ -176,6 +180,7 @@ function TierPickCard({ label, sublabel, active, onClick }) {
 }
 
 function ClaimCard({ active, label, hint, onToggle }) {
+  const { t } = window.I18N.useI18n();
   function toggleFromKeyboard(e) {
     if (e.key !== "Enter" && e.key !== " ") return;
     e.preventDefault();
@@ -196,10 +201,10 @@ function ClaimCard({ active, label, hint, onToggle }) {
       <div className="grow">
         <div className="row" style={{ gap: "var(--sp-2)" }}>
           <span className="name">{label}</span>
-          <span className="chip">15 pts</span>
+          <span className="chip">{t("tier.claimPoints", { points: 15 })}</span>
         </div>
         <div className="muted" style={{ marginTop: "var(--sp-1)", fontSize: "var(--fs-sm)" }}>
-          {hint} A correct claim earns 15 points; a wrong claim earns 0.
+          {hint} {t("tier.correctClaimScoring")}
         </div>
       </div>
     </div>

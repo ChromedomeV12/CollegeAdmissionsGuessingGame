@@ -11,6 +11,7 @@ const http = require("http");
 const { spawn } = require("child_process");
 const path = require("path");
 const puppeteer = require("puppeteer");
+const assert = require("assert");
 
 const REPO_DIR = __dirname;
 const POLL_TIMEOUT_MS = 30000; // generous: in-browser Babel compile + fetch
@@ -162,29 +163,23 @@ async function main() {
     const base = `http://127.0.0.1:${port}/`;
     await page.goto(base, { waitUntil: "domcontentloaded" });
     log("PASS page loaded", base);
+    await page.evaluate(() => localStorage.removeItem("ao_lang"));
+    await page.reload({ waitUntil: "domcontentloaded" });
+    assert.equal(await page.evaluate(() => document.documentElement.lang), "en");
+    await page.waitForSelector('[data-testid="language-toggle"]', { timeout: SHORT_TIMEOUT_MS });
+    await page.click('[data-testid="language-toggle"]');
+    await page.waitForFunction(() => document.documentElement.lang === "zh-CN" && localStorage.ao_lang === "zh-CN");
+    assert.equal(await page.evaluate(() => document.documentElement.lang), "zh-CN");
+    await page.click('[data-testid="language-toggle"]');
+    await page.waitForFunction(() => document.documentElement.lang === "en" && localStorage.ao_lang === "en");
 
-    async function clickButton(label, exact = true) {
-      await page.waitForFunction(
-        (wanted, exactMatch) => [...document.querySelectorAll("button")].some((button) => {
-          const text = (button.textContent || "").trim();
-          return exactMatch ? text === wanted : text.includes(wanted);
-        }),
-        { timeout: SHORT_TIMEOUT_MS },
-        label,
-        exact,
-      );
-      await page.evaluate((wanted, exactMatch) => {
-        const button = [...document.querySelectorAll("button")].find((candidate) => {
-          const text = (candidate.textContent || "").trim();
-          return exactMatch ? text === wanted : text.includes(wanted);
-        });
-        if (!button) throw new Error(`Button "${wanted}" not found`);
-        button.click();
-      }, label, exact);
+    async function clickTestId(testId) {
+      await page.waitForSelector(`[data-testid="${testId}"]`, { timeout: SHORT_TIMEOUT_MS });
+      await page.click(`[data-testid="${testId}"]`);
     }
 
     async function startGuessing() {
-      await clickButton("Start guessing");
+      await clickTestId("phase-start");
       await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: POLL_TIMEOUT_MS });
     }
 
@@ -219,17 +214,19 @@ async function main() {
       await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: POLL_TIMEOUT_MS });
       await selectNoAdmitClaims();
       await page.waitForFunction(
-        () => [...document.querySelectorAll("button")]
-          .some((button) => (button.textContent || "").includes("Lock in predictions") && !button.disabled),
+        () => {
+          const button = document.querySelector('[data-testid="phase-lock"]');
+          return !!button && !button.disabled;
+        },
         { timeout: SHORT_TIMEOUT_MS },
       );
       await Promise.all([
         page.waitForSelector('[data-screen-label="03 Schools"]', { timeout: POLL_TIMEOUT_MS }),
-        clickButton("Lock in predictions"),
+        clickTestId("phase-lock"),
       ]);
       await Promise.all([
         page.waitForSelector('[data-screen-label="04 Reveal"]', { timeout: POLL_TIMEOUT_MS }),
-        clickButton("Reveal results"),
+        clickTestId("phase-reveal"),
       ]);
     }
     async function revealWithTierPicks(universityTier, lacTier) {
@@ -246,11 +243,11 @@ async function main() {
       }, universityTier, lacTier);
       await Promise.all([
         page.waitForSelector('[data-screen-label="03 Schools"]', { timeout: POLL_TIMEOUT_MS }),
-        clickButton("Lock in predictions"),
+        clickTestId("phase-lock"),
       ]);
       await Promise.all([
         page.waitForSelector('[data-screen-label="04 Reveal"]', { timeout: POLL_TIMEOUT_MS }),
-        clickButton("Reveal results"),
+        clickTestId("phase-reveal"),
       ]);
     }
 
@@ -282,18 +279,38 @@ async function main() {
       return score;
     }
 
-    // ── Step 1: Register -> signed-in Home -> Play -> applicant menu ───────
-    await page.waitForSelector('input[placeholder="your_username"]', { timeout: POLL_TIMEOUT_MS });
-    await clickButton("Create account");
-    await page.waitForSelector('input[placeholder="Same password again"]', { timeout: SHORT_TIMEOUT_MS });
+    // ── Step 1: Invalid-login copy follows locale without a request ────────
+    await page.waitForSelector("#auth-username", { timeout: POLL_TIMEOUT_MS });
+    await page.type("#auth-username", `missing_${Date.now()}`);
+    await page.type("#auth-password", "wrongpass123");
+    await clickTestId("auth-submit");
+    await page.waitForFunction(
+      () => (document.querySelector('[role="alert"]')?.textContent || "").includes("Invalid username or password."),
+      { timeout: SHORT_TIMEOUT_MS },
+    );
+    await clickTestId("language-toggle");
+    await page.waitForFunction(() => document.documentElement.lang === "zh-CN");
+    await page.waitForFunction(
+      () => (document.querySelector('[role="alert"]')?.textContent || "").includes("用户名或密码无效。"),
+      { timeout: SHORT_TIMEOUT_MS },
+    );
+    await clickTestId("language-toggle");
+    await page.waitForFunction(() => document.documentElement.lang === "en");
+    log("PASS invalid-login error translated in-place across EN and zh-CN");
 
-    await page.type('input[placeholder="your_username"]', username);
-    const pwdInputs = await page.$$('input[type="password"]');
-    if (pwdInputs.length < 2) throw new Error("Expected two password inputs in register mode");
-    await pwdInputs[0].type(password);
-    await pwdInputs[1].type(password);
+    // ── Step 2: Register -> signed-in Home -> Play -> applicant menu ───────
+    await clickTestId("auth-mode-register");
+    await page.waitForSelector("#auth-confirm", { timeout: SHORT_TIMEOUT_MS });
 
-    const submitBtn = await page.$("button.btn-primary");
+    for (const [selector, value] of [["#auth-username", username], ["#auth-password", password], ["#auth-confirm", password]]) {
+      await page.click(selector);
+      await page.keyboard.down("Control");
+      await page.keyboard.press("A");
+      await page.keyboard.up("Control");
+      await page.type(selector, value);
+    }
+
+    const submitBtn = await page.$('[data-testid="auth-submit"]');
     if (!submitBtn) throw new Error("Register submit button not found");
     await Promise.all([
       page.waitForSelector('[data-screen-label="Home"]', { timeout: POLL_TIMEOUT_MS }),
@@ -318,7 +335,7 @@ async function main() {
     // Theme persistence remains covered on the new signed-in landing screen.
     const themeBefore = await page.evaluate(() => document.documentElement.dataset.theme || "dark");
     const expectedTheme = themeBefore === "light" ? "dark" : "light";
-    await page.click('[aria-label="Toggle theme"]');
+    await page.click('[data-testid="theme-toggle"]');
     await page.waitForFunction(
       (expected) => document.documentElement.dataset.theme === expected && localStorage.getItem("ao_theme") === expected,
       { timeout: SHORT_TIMEOUT_MS },
@@ -335,7 +352,7 @@ async function main() {
     }
     log(`PASS theme toggled ${themeBefore} -> ${expectedTheme} and persisted on Home`);
 
-    await clickButton("Play");
+    await clickTestId("home-play");
     await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: POLL_TIMEOUT_MS });
     log("PASS Home Play action opened the applicant menu");
 
@@ -391,25 +408,30 @@ async function main() {
     await selectNoAdmitClaims();
     await Promise.all([
       page.waitForSelector('[data-screen-label="03 Schools"]', { timeout: POLL_TIMEOUT_MS }),
-      clickButton("Lock in predictions"),
+      clickTestId("phase-lock"),
     ]);
     failNextRevealWrite = true;
-    await clickButton("Reveal results");
+    await clickTestId("phase-reveal");
     await page.waitForSelector('[role="alert"]', { timeout: SHORT_TIMEOUT_MS });
     await new Promise((resolve) => setTimeout(resolve, 5500));
-    const failedWriteState = await page.evaluate(() => ({
-      hasSaveError: document.body.textContent.includes("Could not save this reveal"),
-      hasDetails: document.body.textContent.includes("Tier results") || !!document.querySelector(".final-banner"),
-    }));
+    const failedWriteState = await page.evaluate(() => {
+      const text = document.body.textContent || "";
+      return {
+        hasLocalizedAlert: !!document.querySelector('[role="alert"]'),
+        leakedRawError: text.includes("Injected reveal persistence failure"),
+        hasDetails: text.includes("Tier results") || !!document.querySelector(".final-banner"),
+      };
+    });
     const failedLocks = await fetchJson(port, "/api/locks", { token });
     const failedMe = await fetchJson(port, "/api/me", { token });
-    if (!failedWriteState.hasSaveError || failedWriteState.hasDetails || failedLocks.includes(failureProfileId) || failedMe.scores?.[failureProfileId] !== undefined) {
+    if (!failedWriteState.hasLocalizedAlert || failedWriteState.leakedRawError || failedWriteState.hasDetails
+        || failedLocks.includes(failureProfileId) || failedMe.scores?.[failureProfileId] !== undefined) {
       throw new Error(`Reveal failure disclosed or persisted state: ${JSON.stringify({ ...failedWriteState, failedLocks, score: failedMe.scores?.[failureProfileId] })}`);
     }
     consoleErrors = consoleErrors.filter((message) => !message.includes("Injected reveal persistence failure"));
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-screen-label="Home"]', { timeout: POLL_TIMEOUT_MS });
-    await clickButton("Play");
+    await clickTestId("home-play");
     await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: POLL_TIMEOUT_MS });
     log("PASS failed reveal write blocked answer disclosure and backend lock/score");
     const escapeCardIndex = profiles.length - 2;
@@ -460,8 +482,7 @@ async function main() {
 
       if (profileIdx === 0) {
         const correctChoicesPremature = await page.evaluate(() =>
-          [...document.querySelectorAll('[data-screen-label="01 Profile"] button')]
-            .some((button) => (button.textContent || "").trim() === "Correct choices")
+          !!document.querySelector('[data-testid="correct-choices-tab"]')
         );
         if (correctChoicesPremature) throw new Error("Correct choices were visible before the case was finalized");
       }
@@ -470,11 +491,7 @@ async function main() {
       const pendingResponseOffset = observedRevealResponses.length;
       await startGuessing();
       await revealWithNoAdmitClaims();
-      await page.waitForFunction(
-        () => [...document.querySelectorAll('[data-screen-label="04 Reveal"] button')]
-          .some((button) => /^Retry case \([1-5]s\)$/.test((button.textContent || "").trim())),
-        { timeout: SHORT_TIMEOUT_MS },
-      );
+      await page.waitForSelector('[data-testid="retry-case"]', { timeout: SHORT_TIMEOUT_MS });
 
       const responseDeadline = Date.now() + SHORT_TIMEOUT_MS;
       let pendingResponse = null;
@@ -497,8 +514,7 @@ async function main() {
         const text = screen?.textContent || "";
         const scoreCard = screen?.querySelector(".score-pop")?.closest(".card");
         const grid = scoreCard?.parentElement;
-        const retry = [...(screen?.querySelectorAll("button") || [])]
-          .find((button) => (button.textContent || "").startsWith("Retry case ("));
+        const retry = screen?.querySelector('[data-testid="retry-case"]');
         const scoreStyle = scoreCard ? getComputedStyle(scoreCard) : null;
         return {
           hasAggregates: ["Case score", "Accuracy", "Time"].every((label) => text.includes(label)),
@@ -520,7 +536,7 @@ async function main() {
       let finalScore = firstScore;
       let alreadyAtMenu = false;
       if (profileIdx === 0) {
-        await clickButton("Retry case (", false);
+        await clickTestId("retry-case");
         await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: POLL_TIMEOUT_MS });
         await revealWithTierPicks("T50", "T5 LAC");
         await page.waitForFunction(() => {
@@ -544,14 +560,14 @@ async function main() {
         const startsBeforeReload = attemptMutationPaths.filter((pathname) => pathname === "/api/attempts/start").length;
         await page.reload({ waitUntil: "domcontentloaded" });
         await page.waitForSelector('[data-screen-label="Home"]', { timeout: POLL_TIMEOUT_MS });
-        await clickButton("Play");
+        await clickTestId("home-play");
         await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: POLL_TIMEOUT_MS });
         const startsAfterReload = attemptMutationPaths.filter((pathname) => pathname === "/api/attempts/start").length;
         if (startsAfterReload !== startsBeforeReload) throw new Error("Reload created an extra scoring attempt");
         alreadyAtMenu = true;
         log("PASS reload during retry window recovered without another attempt");
       } else {
-        await clickButton("Retry case (", false);
+        await clickTestId("retry-case");
         await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: POLL_TIMEOUT_MS });
         await revealWithNoAdmitClaims();
         await page.waitForFunction(() => {
@@ -564,7 +580,7 @@ async function main() {
       if (!alreadyAtMenu) {
         const finalText = await page.$eval('[data-screen-label="04 Reveal"]', (screen) => screen.textContent || "");
         if (/\bseason\b/i.test(finalText)) throw new Error(`Final result for profile #${profileIdx} contains season text`);
-        await clickButton("Menu");
+        await clickTestId("nav-menu");
         await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: POLL_TIMEOUT_MS });
       }
 
@@ -590,9 +606,8 @@ async function main() {
         const attemptCallsBeforePractice = attemptMutationPaths.length;
         await page.evaluate((idx) => document.querySelectorAll('[data-screen-label="00 Menu"] .school-card')[idx].click(), profileIdx);
         await page.waitForSelector('[data-screen-label="01 Profile"]', { timeout: POLL_TIMEOUT_MS });
-        await page.waitForFunction(() => [...document.querySelectorAll('[data-screen-label="01 Profile"] button')]
-          .some((button) => (button.textContent || "").trim() === "Correct choices"), { timeout: POLL_TIMEOUT_MS });
-        await clickButton("Correct choices");
+        await page.waitForSelector('[data-testid="correct-choices-tab"]', { timeout: POLL_TIMEOUT_MS });
+        await clickTestId("correct-choices-tab");
         await page.waitForFunction(() => (document.querySelector('[data-screen-label="01 Profile"]')?.textContent || "")
           .includes("This file is finalized and no longer affects your score."), { timeout: SHORT_TIMEOUT_MS });
         await startGuessing();
@@ -607,7 +622,7 @@ async function main() {
             hasPracticeCopy: text.includes("Practice feedback") && text.includes("not recorded"),
             hasTimeClaim: labels.includes("Time") || text.includes("Score multiplier"),
             hasScoringClaim: /ranking|contributed|season/i.test(text),
-            hasRetry: text.includes("Retry case ("),
+            hasRetry: !!screen.querySelector('[data-testid="retry-case"]'),
           };
         });
         if (!practiceState.hasPracticeCopy || practiceState.hasTimeClaim || practiceState.hasScoringClaim || practiceState.hasRetry) {
@@ -618,7 +633,7 @@ async function main() {
         if (meAfterPractice.scores?.[selectedProfileId] !== scoreBeforePractice) {
           throw new Error("Practice changed the persisted score");
         }
-        await clickButton("Menu");
+        await clickTestId("nav-menu");
         await page.waitForSelector('[data-screen-label="00 Menu"]', { timeout: POLL_TIMEOUT_MS });
         log("PASS persisted Practice shows Correct choices, no scoring copy/calls, immutable score");
       }
@@ -662,7 +677,7 @@ async function main() {
     });
 
     // ── Step 3: Global leaderboard UI has no season dependency ─────────────
-    await clickButton("Leaderboard");
+    await clickTestId("nav-leaderboard");
     await page.waitForFunction(
       () => [...document.querySelectorAll("h2")]
         .some((heading) => (heading.textContent || "").trim() === "Global leaderboard"),
@@ -706,15 +721,15 @@ async function main() {
       throw new Error(`Leaderboard rivalry/season gate failed: ${JSON.stringify(leaderboardUi)}`);
     }
     log(`PASS global leaderboard UI: avg=${uiAvg}, games=${uiGames}, best=${uiBest}, rivalry visible, no seasons`);
-    await page.type('input[aria-label="Rival username"]', rivalUsername);
-    await clickButton("Add rival");
+    await page.type('[data-testid="rival-input"]', rivalUsername);
+    await clickTestId("rival-add");
     await page.waitForFunction((wanted) => [...document.querySelectorAll(".card .row span")]
       .some((node) => (node.textContent || "").includes(wanted)), { timeout: SHORT_TIMEOUT_MS }, rivalUsername);
     const rivalList = await fetchJson(port, "/api/rivals", { token });
     if (!rivalList.some((entry) => entry.username === rivalUsername)) {
       throw new Error(`Rival was not persisted: ${JSON.stringify(rivalList)}`);
     }
-    await clickButton("Duel");
+    await clickTestId("duel-open");
     await page.waitForFunction((profileId) => [...document.querySelectorAll(".leaderboard-grid--duel")]
       .some((row) => (row.textContent || "").includes(profileId)), { timeout: POLL_TIMEOUT_MS }, profiles[0].id);
     const duel = await fetchJson(port, `/api/duel/${encodeURIComponent(rivalUsername)}`, { token });

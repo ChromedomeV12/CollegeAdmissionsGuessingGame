@@ -467,7 +467,7 @@ function Phase4Results({
         </div>
       ) : firstScoringReveal && retryLeft > 0 ? (
         <div className="row" style={{ justifyContent: "flex-end", marginTop: "var(--sp-6)" }}>
-          <Btn variant="ghost" onClick={handleScoringRetry} icon="refresh">Retry case ({retryLeft}s)</Btn>
+          <Btn variant="ghost" onClick={handleScoringRetry} icon="refresh" testId="retry-case">Retry case ({retryLeft}s)</Btn>
         </div>
       ) : null}
     </div>
