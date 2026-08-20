@@ -41,20 +41,6 @@ function LanguageToggle() {
   );
 }
 
-function inferredTestId(children) {
-  const text = React.Children.toArray(children)
-    .filter(child => typeof child === "string" || typeof child === "number")
-    .join("")
-    .trim();
-  if (text === "Play") return "home-play";
-  if (text === "Start guessing") return "phase-start";
-  if (text === "Lock in predictions") return "phase-lock";
-  if (text === "Reveal results") return "phase-reveal";
-  if (text.startsWith("Retry case (")) return "retry-case";
-  if (text === "Add rival") return "rival-add";
-  if (text === "Duel") return "duel-open";
-  return undefined;
-}
 
 function Btn({ onClick, children, variant, disabled, icon, iconRight, ariaLabel, title, testId }) {
   const cls = "btn" + (variant === "ghost" ? " btn--ghost" : "");
@@ -68,7 +54,7 @@ function Btn({ onClick, children, variant, disabled, icon, iconRight, ariaLabel,
       disabled={disabled}
       aria-label={iconOnly ? (ariaLabel || title || undefined) : ariaLabel}
       title={title}
-      data-testid={testId || inferredTestId(children)}
+      data-testid={testId}
     >
       {icon ? <i className={`ti ti-${icon}`} style={{ fontSize: "var(--fs-md)" }} /> : null}
       {children}
@@ -109,7 +95,7 @@ function Tabs({ tabs, active, onChange, idBase = "tabs" }) {
           aria-controls={`${idBase}-panel-${t.id}`}
           tabIndex={active === t.id ? 0 : -1}
           className="tab"
-          data-testid={t.label === "Correct choices" ? "correct-choices-tab" : undefined}
+          data-testid={t.testId}
           onClick={() => onChange(t.id)}
         >
           {t.label}

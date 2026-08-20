@@ -260,7 +260,7 @@ function Phase3School({
           <span className="label" style={{ color: "var(--text-tertiary)" }} aria-live="polite">
             {schoolSelections.size} selected
           </span>
-          <Btn onClick={onReveal} iconRight="sparkles" ariaLabel="Reveal results">Reveal results</Btn>
+          <Btn onClick={onReveal} iconRight="sparkles" ariaLabel="Reveal results" testId="phase-reveal">Reveal results</Btn>
         </div>
       </div>
     </div>

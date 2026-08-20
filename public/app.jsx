@@ -47,7 +47,7 @@ function HomeScreen({ onPlay }) {
           Predict where an applicant was admitted, then see how closely your read matched the real outcome.
         </p>
         <div className="home-actions">
-          <Btn onClick={onPlay} iconRight="arrow-right">Play</Btn>
+          <Btn onClick={onPlay} iconRight="arrow-right" testId="home-play">Play</Btn>
         </div>
       </section>
 
@@ -983,7 +983,7 @@ function LeaderboardScreen({ username, average, rank, token }) {
             aria-label="Rival username"
             style={{ flex: 1, minWidth: 0 }}
           />
-          <Btn onClick={addRival} icon="user-plus" disabled={!rivalInput.trim()}>Add rival</Btn>
+          <Btn onClick={addRival} icon="user-plus" disabled={!rivalInput.trim()} testId="rival-add">Add rival</Btn>
         </form>
         {rivalError && (
           <div className="label" role="alert" style={{ color: "var(--text-danger)", marginTop: "var(--sp-2)" }}>{rivalError}</div>
@@ -1001,7 +1001,7 @@ function LeaderboardScreen({ username, average, rank, token }) {
                   <i className="ti ti-swords" aria-hidden="true" style={{ marginRight: 6, color: "var(--text-tertiary)" }} />
                   {r.username}
                 </span>
-                <Btn variant="ghost" onClick={() => openDuel(r.username)} iconRight="arrow-right">Duel</Btn>
+                <Btn variant="ghost" onClick={() => openDuel(r.username)} iconRight="arrow-right" testId="duel-open">Duel</Btn>
               </div>
             ))}
           </div>

@@ -21,7 +21,7 @@ function Phase1Profile({ profile, onStart, profileIdx, profileCount, canViewCorr
             <span className="eyebrow">Applicant {String(profileIdx + 1).padStart(2, "0")} / {String(profileCount).padStart(2, "0")}</span>
             <h2>{profile.id}</h2>
           </div>
-          <Btn onClick={onStart} iconRight="arrow-right">Start guessing</Btn>
+          <Btn onClick={onStart} iconRight="arrow-right" testId="phase-start">Start guessing</Btn>
         </div>
 
         <div style={{ padding: "0 var(--sp-5)" }}>
@@ -33,7 +33,7 @@ function Phase1Profile({ profile, onStart, profileIdx, profileCount, canViewCorr
               { id: "overview", label: "Overview" },
               { id: "academics", label: "Academics" },
               { id: "ecs", label: "Extracurriculars" },
-              ...(canViewCorrectChoices ? [{ id: "correct", label: "Correct choices" }] : []),
+              ...(canViewCorrectChoices ? [{ id: "correct", label: "Correct choices", testId: "correct-choices-tab" }] : []),
             ]}
           />
         </div>

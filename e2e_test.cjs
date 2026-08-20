@@ -170,6 +170,8 @@ async function main() {
     await page.waitForFunction(() => document.documentElement.lang === "zh-CN" && localStorage.ao_lang === "zh-CN");
     await page.reload({ waitUntil: "domcontentloaded" });
     assert.equal(await page.evaluate(() => document.documentElement.lang), "zh-CN");
+    await page.click('[data-testid="language-toggle"]');
+    await page.waitForFunction(() => document.documentElement.lang === "en" && localStorage.ao_lang === "en");
 
     async function clickTestId(testId) {
       await page.waitForSelector(`[data-testid="${testId}"]`, { timeout: SHORT_TIMEOUT_MS });
@@ -212,8 +214,10 @@ async function main() {
       await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: POLL_TIMEOUT_MS });
       await selectNoAdmitClaims();
       await page.waitForFunction(
-        () => [...document.querySelectorAll("button")]
-          .some((button) => (button.textContent || "").includes("Lock in predictions") && !button.disabled),
+        () => {
+          const button = document.querySelector('[data-testid="phase-lock"]');
+          return !!button && !button.disabled;
+        },
         { timeout: SHORT_TIMEOUT_MS },
       );
       await Promise.all([
@@ -276,11 +280,11 @@ async function main() {
     }
 
     // ── Step 1: Register -> signed-in Home -> Play -> applicant menu ───────
-    await page.waitForSelector('input[placeholder="your_username"]', { timeout: POLL_TIMEOUT_MS });
+    await page.waitForSelector("#auth-username", { timeout: POLL_TIMEOUT_MS });
     await clickTestId("auth-mode-register");
-    await page.waitForSelector('input[placeholder="Same password again"]', { timeout: SHORT_TIMEOUT_MS });
+    await page.waitForSelector("#auth-confirm", { timeout: SHORT_TIMEOUT_MS });
 
-    await page.type('input[placeholder="your_username"]', username);
+    await page.type("#auth-username", username);
     const pwdInputs = await page.$$('input[type="password"]');
     if (pwdInputs.length < 2) throw new Error("Expected two password inputs in register mode");
     await pwdInputs[0].type(password);

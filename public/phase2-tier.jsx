@@ -153,6 +153,7 @@ function Phase2Tier({
           onClick={onLock}
           disabled={!(universityTierPick || noUniClaim) || !(lacTierPick || noLacClaim)}
           iconRight="lock"
+          testId="phase-lock"
         >
           Lock in predictions
         </Btn>
