@@ -7,3 +7,4 @@ node_modules/
 data/queue.jsonl
 data/seen_ids.json
 .firecrawl/
+.worktrees/
