@@ -1082,6 +1082,7 @@ a:focus-visible { box-shadow: var(--focus-ring); }
 @media (max-width: 440px) {
   .topbar > .row { grid-template-columns: 1fr; }
   .phase-meta { grid-column: auto; }
+  .tabs { flex-wrap: wrap; gap: 0 14px; }
   .ap-row { grid-template-columns: 1fr 80px 24px; }
   .tier-grid--uni { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

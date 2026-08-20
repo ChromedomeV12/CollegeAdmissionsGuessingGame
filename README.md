@@ -24,6 +24,12 @@ This project is co-owned and co-developed by ChromedomeV12 (repo owner) and Maso
 - **Sculpted wallpaper**: a full-viewport Three.js shader builds six overlapping organic fold boundaries with Tokyo-derived layer colors, crest highlights, and deep valley shadows—closer to macOS abstract cloth/paper relief than line art. Motion is a very slow ≥45s breathing drift plus ≤64px scroll and ≤8px pointer parallax (30fps cap, paused when hidden). Reduced-motion draws one static frame. A broad six-layer filled-SVG fallback preserves the same folded look if Three/WebGL/CDN fails; the geometric grid and topographic contours are removed.
 - Tailwind Play CDN is configured with preflight disabled for no-build utility classes; the existing semantic CSS remains authoritative.
 
+## Language support
+
+The interface supports English (`en`) and Simplified Chinese (`zh-CN`) without a build step or runtime translation service. A first visit starts in English. The globe control switches languages in place, persists the exact locale in local storage as `ao_lang`, and keeps the document `<html lang>` attribute synchronized across reloads.
+
+This first localization phase translates app-owned UI copy, accessible names, dates, and the approved structured profile enums. Stable product data remains unchanged in both modes: applicant IDs, usernames, school names, tier codes, scores, API fields, and URLs. Free-form imported profile prose—including course/activity descriptions, awards, and teaching points—is intentionally preserved rather than machine-translated. Translation resources and locale helpers live in `public/i18n.js`.
+
 ### API surface
 
 | Method | Path | Auth | Purpose |
@@ -78,7 +84,7 @@ npm run dev            # http://localhost:3005
 npm test
 ```
 
-Runs the Node unit suite (shared server/browser scoring, both no-admit claims, actual no-admit tier boundaries, invalid predictions, Reddit URL/OAuth/ownership helpers, post sanitization, and design-contrast checks) followed by `e2e_test.cjs`. The browser test registers a throwaway user, verifies Home/theme persistence, denied anonymous/premature detail access, failed-write safety, Escape/reload recovery, lower retry replacement, timeout finalization, persistent Practice/Correct choices, immutable Practice scores, real rival/duel rows, and the seasonless global leaderboard/API row. It writes to the real `data/game.db` with unique usernames per run.
+Runs the Node unit suite (shared server/browser scoring, both no-admit claims, actual no-admit tier boundaries, bilingual resource/runtime contracts, invalid predictions, Reddit URL/OAuth/ownership helpers, post sanitization, and design-contrast checks) followed by `e2e_test.cjs`. The browser test registers a throwaway user, verifies Home/theme persistence and in-place language switching, denied anonymous/premature detail access, failed-write safety, Escape/reload recovery, a bounded Chinese aggregate/retry/finalized/Practice flow, in-place return to English, lower retry replacement, timeout finalization, persistent Correct choices, immutable Practice scores, real rival/duel rows, and the seasonless global leaderboard/API row. It writes to the real `data/game.db` with unique usernames per run.
 
 Acceptance checks: [AGENT_CHECKLIST.md](AGENT_CHECKLIST.md) — the agent-run self-check workflow (boot, API, auth, all four phases, navigation/persistence, console-error watch, screenshots, and the `npm test` gate).
 

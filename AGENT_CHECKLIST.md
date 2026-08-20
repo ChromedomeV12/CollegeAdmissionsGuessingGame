@@ -8,6 +8,7 @@ Executable checks for the current Admissions Oracle product. Use a throwaway por
 - Use a username no longer than 20 characters, e.g. `ui` plus the last 10 timestamp digits, and a password of 8–72 characters.
 - Attach `pageerror` and `console`-error listeners before the first navigation. Keep the same page through the flow.
 - The browser screen gates are `Home`, `00 Menu`, `01 Profile`, `02 Tier`, `03 Schools`, and `04 Reveal` via `data-screen-label`.
+- Language-independent interactions use `data-testid`; never make automation depend only on translated labels. Supported locales are exactly `en` and `zh-CN`.
 - `npm test` and manual runs write uniquely named users/scores to the real `data/game.db`; never assert global row counts.
 
 ## 1. Server and API
@@ -111,13 +112,18 @@ Finalize five distinct profiles for the throwaway user, then open Leaderboard.
 - **PASS:** Rivalry / `Head-to-head on shared cases` UI is present.
 - Add a known username through `/api/rivals`, open `/api/duel/:username`, and confirm the comparison includes only profile IDs completed by both users. Remove it through `DELETE /api/rivals/:username`.
 
-## 7. Visual and accessibility checks
+## 7. Bilingual visual and accessibility checks
 
-Capture Home, Menu, all four phases, first reveal, final reveal, Correct choices, and Leaderboard in Tokyo Night and Day.
+Use fresh storage first, then drive both `en` and `zh-CN` at 1600×900 and 390×844. Capture auth, Home, Profile, Tier, Schools, aggregate reveal, finalized reveal, Practice/Correct choices, and Leaderboard.
+
+- A fresh visit starts in English. The globe control changes `document.documentElement.lang` and `localStorage.ao_lang` to the exact selected locale; reload preserves it. Toggle both directions without reloading the current screen.
+- App-owned labels, controls, errors, date formatting, result rows, Practice exclusions, leaderboard, and rivalry copy change language. Representative English UI labels are absent in Chinese mode.
+- Applicant IDs, usernames, school names, tier codes, scores, URLs, and free-form imported prose remain unchanged. Unknown structured enum values pass through unchanged.
+- Every interactive control retains a visible focus treatment and an accessible name in both locales. Test IDs, screen labels, API payloads, and scoring values do not change with language.
 
 - Film/grain is visible over the sculpted wallpaper but below content; cards/topbar remain smoother, higher-opacity matte glass.
 - Wallpaper retains six broad organic folds, crest highlights, deep valleys, ≤64px scroll and ≤8px pointer parallax, hidden-tab pause, and static reduced-motion fallback; no grid/contour/particle layer returns.
-- Desktop active-round topbar stays single-row. Mobile layouts remain readable and free of horizontal overflow.
+- Desktop active-round topbar stays single-row. Chinese copy wraps readably; every requested mobile screen is free of horizontal overflow, including the four-tab Correct choices strip.
 - Focus rings, keyboard-operable claim/cards, semantic labels, and documented Tokyo contrast pairs remain intact.
 - Completion green is exact Tokyo `#587539`, not palette-unrelated green.
 
@@ -137,12 +143,12 @@ npm test
 |---|---|---|
 | Server/API/auth validation | | |
 | Submission disabled gate | | |
-| Home/theme persistence | | |
+| Home/theme/language persistence | | |
 | Both no-admit claims | | |
 | First reveal answer concealment | | |
 | Retry + timeout finalization | | |
 | Permanent practice/Correct choices | | |
 | Scoring edge cases | | |
 | Global leaderboard/rivals | | |
-| Tokyo visual/accessibility checks | | |
+| Bilingual Tokyo visual/accessibility checks (1600×900 and 390×844) | | |
 | `npm test` | | |

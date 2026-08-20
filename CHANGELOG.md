@@ -2,6 +2,14 @@
 
 All notable changes to this project. Dates are YYYY-MM-DD.
 
+## 2026-08-20 — English and Simplified Chinese interface
+
+- Added a dependency-free bilingual runtime for exact `en` and `zh-CN` locales. First visit remains English; the globe control switches copy without a reload, persists `ao_lang`, and synchronizes `<html lang>`.
+- Localized authentication, Home/menu/navigation, profiles and structured enums, tier/school selection, aggregate retry, finalized results, Practice/Correct choices, leaderboard, rivalry, errors, dates, and accessible names.
+- Preserved applicant IDs, usernames, school names, tier codes, scoring/API contracts, and free-form imported prose. Unknown structured values remain unchanged and no runtime translation service was introduced.
+- Extended resource parity/interpolation tests and the existing five-case E2E flow with bounded Chinese aggregate, retry/finalization, Practice, and rival/leaderboard checks plus in-place English restoration.
+- Browser-verified both locales across auth, Home, every game phase, aggregate/final reveals, Practice/Correct choices, and leaderboard at 1600×900 and 390×844. Tokyo Night/Day tokens and wallpaper remain unchanged; a narrow mobile tab-wrap rule removes the only detected horizontal overflow.
+
 ## 2026-08-20 — Authoritative retry finalization and answer security
 
 - Replaced client-submitted scores with durable server attempts. The server validates prediction inputs, computes scores from private profiles through shared `game-score.js`, stores the pending first result, and atomically writes the exact final score plus permanent Practice lock.
