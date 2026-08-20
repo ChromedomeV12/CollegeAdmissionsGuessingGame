@@ -22,17 +22,6 @@ const LAC_TIERS_RAW = {
   "T20 LAC": ["Vassar", "Colby", "Grinnell", "Hamilton", "Harvey Mudd", "Wesleyan", "Smith", "Davidson", "Barnard"]
 };
 
-const TIER_RANGE = {
-  HYPSM: "Ranks 1-5",
-  T10:   "Ranks 6-10",
-  T15:   "Ranks 11-15",
-  T20:   "Ranks 16-20",
-  T30:   "Ranks 21-30",
-  T50:   "Ranks 31-50",
-  "T5 LAC":  "LAC ranks 1-5",
-  "T10 LAC": "LAC ranks 6-10",
-  "T20 LAC": "LAC ranks 11-20"
-};
 
 // Common aliases — left side is canonical (matches tier table), right is alt
 const ALIASES = {
@@ -174,7 +163,7 @@ function getAppliedSchools(profile) {
 }
 
   root.TIERS = {
-    UNI_TIER_LIST, LAC_TIER_LIST, TIER_RANGE,
+    UNI_TIER_LIST, LAC_TIER_LIST,
     UNI_CUMULATIVE, LAC_CUMULATIVE,
     normSchool, schoolInTier, schoolKind,
     getAdmittedSchools, getAppliedSchools,

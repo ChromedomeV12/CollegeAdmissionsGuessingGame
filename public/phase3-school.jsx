@@ -156,6 +156,7 @@ function computeAvailable(profile, tier, kind) {
 
 // Informational countdown aligned to the server attempt's authoritative start.
 function TimeBonusChip({ startedAt }) {
+  const { t } = window.I18N.useI18n();
   const startMs = Date.parse(startedAt || "");
   const [elapsed, setElapsed] = React.useState(() => Number.isFinite(startMs)
     ? Math.max(0, Math.floor((Date.now() - startMs) / 1000))
@@ -173,7 +174,7 @@ function TimeBonusChip({ startedAt }) {
   const fade = state === "full" ? 1 : Math.max(0.55, 1 - 0.45 * (elapsed - 30) / 90);
   return (
     <span style={{ marginLeft: "auto", opacity: fade, transition: "opacity .6s" }}>
-      <Badge kind={kind} icon="clock">Time bonus · {state}</Badge>
+      <Badge kind={kind} icon="clock">{t("tier.timeBonusState", { state: t(`tier.timeBonus${state[0].toUpperCase()}${state.slice(1)}`) })}</Badge>
     </span>
   );
 }
@@ -183,6 +184,7 @@ function Phase3School({
   schoolSelections, setSchoolSelections, onReveal, onBack,
   isPractice = false, attemptStartedAt = null
 }) {
+  const { t } = window.I18N.useI18n();
   const uni = useMemo(() => computeAvailable(profile, noUniClaim ? null : universityTierPick, "uni"),
     [profile, universityTierPick, noUniClaim]);
   const lac = useMemo(() => computeAvailable(profile, noLacClaim ? null : lacTierPick, "lac"),
@@ -202,28 +204,28 @@ function Phase3School({
       <ProfileCollapsedSummary profile={profile} onExpand={onBack} />
 
       <div className="section-head">
-        <h2>Which ones did they get in?</h2>
-        <span className="sub">Tap the schools you think were admits.</span>
+        <h2>{t("schools.title")}</h2>
+        <span className="sub">{t("schools.instructions")}</span>
         {!isPractice && <TimeBonusChip startedAt={attemptStartedAt} />}
       </div>
 
       <div className="row" style={{ flexWrap: "wrap", gap: "var(--sp-3)", marginBottom: "var(--sp-4)" }}>
         {noUniClaim
-          ? <Badge kind="info">Applicant was not admitted to any T50 University</Badge>
-          : <Badge kind="info">University tier · {universityTierPick}</Badge>}
+          ? <Badge kind="info">{t("tier.noUniversityClaim")}</Badge>
+          : <Badge kind="info">{t("schools.universityTierLabel", { tier: universityTierPick })}</Badge>}
         {noLacClaim
-          ? <Badge kind="info">Applicant was not admitted to any T20 LAC</Badge>
-          : <Badge kind="info">LAC tier · {lacTierPick}</Badge>}
+          ? <Badge kind="info">{t("tier.noLacClaim")}</Badge>
+          : <Badge kind="info">{t("schools.lacTierLabel", { tier: lacTierPick })}</Badge>}
       </div>
 
       {noUniClaim ? (
         <ClaimSkippedSection
-          title="Universities"
-          claim="Applicant was not admitted to any T50 University"
+          title={t("schools.university")}
+          claim={t("tier.noUniversityClaim")}
         />
       ) : (
         <SchoolSection
-          title="Universities" subtitle={`Within ${universityTierPick}`}
+          title={t("schools.university")} subtitle={t("schools.withinTier", { tier: universityTierPick })}
           tier={universityTierPick} kind="uni"
           data={uni} selections={schoolSelections} onToggle={toggle}
         />
@@ -233,34 +235,34 @@ function Phase3School({
 
       {noLacClaim ? (
         <ClaimSkippedSection
-          title="Liberal Arts Colleges"
-          claim="Applicant was not admitted to any T20 LAC"
+          title={t("schools.lac")}
+          claim={t("tier.noLacClaim")}
         />
       ) : (
         <SchoolSection
-          title="Liberal Arts Colleges" subtitle={`Within ${lacTierPick}`}
+          title={t("schools.lac")} subtitle={t("schools.withinTier", { tier: lacTierPick })}
           tier={lacTierPick} kind="lac"
           data={lac} selections={schoolSelections} onToggle={toggle}
         />
       )}
 
       <div className="card" style={{ marginTop: "var(--sp-5)" }}>
-        <div className="label" style={{ marginBottom: "var(--sp-2)" }}>Scoring — out of 100, never negative</div>
+        <div className="label" style={{ marginBottom: "var(--sp-2)" }}>{t("schools.scoringSummary")}</div>
         <div className="row" style={{ flexWrap: "wrap", gap: "var(--sp-5)", fontSize: "var(--fs-base)" }}>
-          <span><i className="ti ti-check" style={{ color: "var(--accent-ok-fg)", marginRight: 6 }} />School selection <span style={{ color: "var(--accent-ok-fg)", fontFamily: "var(--font-mono)" }}>up to 70</span></span>
-          <span><i className="ti ti-check" style={{ color: "var(--accent-ok-fg)", marginRight: 6 }} />University tier <span style={{ color: "var(--accent-ok-fg)", fontFamily: "var(--font-mono)" }}>up to 15</span></span>
-          <span><i className="ti ti-check" style={{ color: "var(--accent-ok-fg)", marginRight: 6 }} />LAC tier <span style={{ color: "var(--accent-ok-fg)", fontFamily: "var(--font-mono)" }}>up to 15</span></span>
+          <span><i className="ti ti-check" style={{ color: "var(--accent-ok-fg)", marginRight: 6 }} aria-hidden="true" />{t("schools.schoolSelection")} <span style={{ color: "var(--accent-ok-fg)", fontFamily: "var(--font-mono)" }}>{t("schools.upTo", { points: 70 })}</span></span>
+          <span><i className="ti ti-check" style={{ color: "var(--accent-ok-fg)", marginRight: 6 }} aria-hidden="true" />{t("schools.universityTier")} <span style={{ color: "var(--accent-ok-fg)", fontFamily: "var(--font-mono)" }}>{t("schools.upTo", { points: 15 })}</span></span>
+          <span><i className="ti ti-check" style={{ color: "var(--accent-ok-fg)", marginRight: 6 }} aria-hidden="true" />{t("schools.lacTier")} <span style={{ color: "var(--accent-ok-fg)", fontFamily: "var(--font-mono)" }}>{t("schools.upTo", { points: 15 })}</span></span>
         </div>
-        <div className="label" style={{ marginTop: "var(--sp-2)", color: "var(--text-tertiary)" }}>Selection is scored by overlap with the admits in view; tier picks earn partial credit by distance from the correct band.</div>
+        <div className="label" style={{ marginTop: "var(--sp-2)", color: "var(--text-tertiary)" }}>{t("schools.scoringHint")}</div>
       </div>
 
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: "var(--sp-6)" }}>
-        <Btn variant="ghost" onClick={onBack} icon="arrow-left">Change tiers</Btn>
+        <Btn variant="ghost" onClick={onBack} icon="arrow-left">{t("schools.changeTiers")}</Btn>
         <div className="row" style={{ alignItems: "center", gap: "var(--sp-3)" }}>
           <span className="label" style={{ color: "var(--text-tertiary)" }} aria-live="polite">
-            {schoolSelections.size} selected
+            {t("schools.selected", { count: schoolSelections.size })}
           </span>
-          <Btn onClick={onReveal} iconRight="sparkles" ariaLabel="Reveal results" testId="phase-reveal">Reveal results</Btn>
+          <Btn onClick={onReveal} iconRight="sparkles" ariaLabel={t("schools.revealResults")} testId="phase-reveal">{t("schools.revealResults")}</Btn>
         </div>
       </div>
     </div>
@@ -268,13 +270,14 @@ function Phase3School({
 }
 
 function ClaimSkippedSection({ title, claim }) {
+  const { t } = window.I18N.useI18n();
   return (
     <div className="card">
       <div style={{ fontFamily: "var(--font-serif)", fontSize: 20, letterSpacing: "-0.01em", marginBottom: "var(--sp-2)" }}>{title}</div>
-      <Badge kind="info">Claim locked</Badge>
+      <Badge kind="info">{t("schools.claimLocked")}</Badge>
       <div className="callout" style={{ marginTop: "var(--sp-3)" }}>
-        <i className="ti ti-info-circle" />
-        <div>{claim}. This school grid is skipped; the claim is scored at reveal.</div>
+        <i className="ti ti-info-circle" aria-hidden="true" />
+        <div>{t("schools.skippedClaim", { claim })}</div>
       </div>
     </div>
   );
@@ -282,6 +285,7 @@ function ClaimSkippedSection({ title, claim }) {
 
 // ─── SchoolSection ────────────────────────────────────────────────────────────
 function SchoolSection({ title, subtitle, tier, kind, data, selections, onToggle, extraOption }) {
+  const { t } = window.I18N.useI18n();
   const extraActive = extraOption && selections.has(extraOption.key);
 
   return (
@@ -292,14 +296,14 @@ function SchoolSection({ title, subtitle, tier, kind, data, selections, onToggle
           <div className="label" style={{ marginTop: "var(--sp-1)" }}>{subtitle}</div>
         </div>
         <span className="label" style={{ color: "var(--text-tertiary)" }}>
-          {data.all.length} schools in band
+          {t("schools.schoolCount", { count: data.all.length })}
         </span>
       </div>
 
       {data.all.length === 0 ? (
         <div className="callout">
-          <i className="ti ti-info-circle" />
-          <div>No schools defined in this band — pick another tier to see options.</div>
+          <i className="ti ti-info-circle" aria-hidden="true" />
+          <div>{t("schools.emptyBand")}</div>
         </div>
       ) : (
         <div
@@ -348,6 +352,7 @@ function SchoolSection({ title, subtitle, tier, kind, data, selections, onToggle
 
 // ─── SchoolCard with logo ─────────────────────────────────────────────────────
 function SchoolCard({ school, selected, onToggle }) {
+  const { t } = window.I18N.useI18n();
   const [pressed, setPressed] = React.useState(false);
   const domain = getSchoolDomain(school.name);
 
@@ -363,7 +368,7 @@ function SchoolCard({ school, selected, onToggle }) {
       onClick={handleClick}
       role="button" tabIndex={0}
       aria-pressed={selected ? "true" : "false"}
-      aria-label={`${selected ? "Deselect" : "Select"} ${school.name}`}
+      aria-label={t(selected ? "schools.deselectCard" : "schools.selectCard", { school: school.name })}
       onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleClick(); } }}
       style={pressed ? {
         transform: "scale(0.97)",

@@ -106,9 +106,10 @@ function Tabs({ tabs, active, onChange, idBase = "tabs" }) {
 }
 
 function Stepper({ phase /* 1..4 */ }) {
-  const labels = ["Profile", "Tier", "Schools", "Reveal"];
+  const { t } = window.I18N.useI18n();
+  const labels = [t("nav.profile"), t("nav.tier"), t("nav.schools"), t("nav.reveal")];
   return (
-    <div className="stepper-wrap" aria-label={`Game progress, step ${phase} of 4`}>
+    <div className="stepper-wrap" aria-label={t("stepper.progress", { phase })}>
       <div className="stepper" aria-hidden="true">
         {labels.map((_, i) => {
           const n = i + 1;
@@ -117,12 +118,12 @@ function Stepper({ phase /* 1..4 */ }) {
         })}
       </div>
       <div className="stepper-labels">
-        {labels.map((l, i) => (
+        {labels.map((label, i) => (
           <span
-            key={l}
+            key={i}
             className={`label${i + 1 === phase ? " is-current" : ""}`}
           >
-            0{i + 1} {l}
+            0{i + 1} {label}
           </span>
         ))}
       </div>
@@ -164,21 +165,27 @@ function AnimatedNum({ value, duration = 900, format = (n) => Math.round(n).toSt
 }
 
 function RankChip({ rank, totalPoints }) {
+  const { t } = window.I18N.useI18n();
+  const rankName = t(`ranks.${rank.current.id}`);
+  const points = totalPoints >= 0 ? totalPoints : `−${Math.abs(totalPoints)}`;
   return (
-    <div className="rank-chip" title={`${rank.current.name} · ${totalPoints} pts`}>
+    <div className="rank-chip" title={t("rank.pointsTitle", { rank: rankName, points })}>
       <span className="rank-chip__icon">
-        <i className={`ti ti-${rank.current.icon}`} />
+        <i className={`ti ti-${rank.current.icon}`} aria-hidden="true" />
       </span>
-      <span className="rank-chip__name">{rank.current.name}</span>
+      <span className="rank-chip__name">{rankName}</span>
       <span className="rank-chip__divider">·</span>
       <span className="num rank-chip__points">
-        {totalPoints >= 0 ? totalPoints : `−${Math.abs(totalPoints)}`} pts
+        {t("rank.pointsValue", { points })}
       </span>
     </div>
   );
 }
 
 function RankProgressBar({ rank, totalPoints }) {
+  const { t } = window.I18N.useI18n();
+  const currentName = t(`ranks.${rank.current.id}`);
+  const nextName = rank.next ? t(`ranks.${rank.next.id}`) : null;
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
@@ -188,16 +195,16 @@ function RankProgressBar({ rank, totalPoints }) {
             background: "var(--accent-info-bg)", color: "var(--accent-info-fg)",
             display: "inline-flex", alignItems: "center", justifyContent: "center"
           }}>
-            <i className={`ti ti-${rank.current.icon}`} style={{ fontSize: "var(--fs-md)" }} />
+            <i className={`ti ti-${rank.current.icon}`} style={{ fontSize: "var(--fs-md)" }} aria-hidden="true" />
           </span>
           <span style={{ fontFamily: "var(--font-serif)", fontSize: 18, letterSpacing: "-0.01em" }}>
-            {rank.current.name}
+            {currentName}
           </span>
         </div>
         <span className="label" style={{ color: "var(--text-tertiary)" }}>
           {rank.next
-            ? `${Math.max(0, rank.next.min - totalPoints)} pts to ${rank.next.name}`
-            : "Max rank reached"}
+            ? t("rank.pointsToNext", { points: Math.max(0, rank.next.min - totalPoints), rank: nextName })
+            : t("rank.maxReached")}
         </span>
       </div>
       <div style={{ height: 6, background: "var(--bg-surface-3)", borderRadius: 3, overflow: "hidden" }}>
@@ -209,9 +216,9 @@ function RankProgressBar({ rank, totalPoints }) {
         }} />
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: "var(--sp-1)" }}>
-        <span className="label" style={{ color: "var(--text-tertiary)" }}>{rank.floor} pts</span>
+        <span className="label" style={{ color: "var(--text-tertiary)" }}>{t("rank.pointsValue", { points: rank.floor })}</span>
         <span className="label" style={{ color: "var(--text-tertiary)" }}>
-          {rank.next ? `${rank.next.min} pts` : "—"}
+          {rank.next ? t("rank.pointsValue", { points: rank.next.min }) : "—"}
         </span>
       </div>
     </div>

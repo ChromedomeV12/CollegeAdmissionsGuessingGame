@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const source = fs.readFileSync(path.join(__dirname, "..", "public", "i18n.js"), "utf8");
+const tiersSource = fs.readFileSync(path.join(__dirname, "..", "public", "tiers.js"), "utf8");
 
 function loadScript(script, extra = {}) {
   const browserGlobal = extra.window === true;
@@ -172,11 +173,14 @@ test("enum translation covers every supported structured value and preserves unk
     ["income", "Low Income", "低收入"],
     ["income", "Middle Income", "中等收入"],
     ["income", "High Income", "高收入"],
+    ["income", "Unknown", "未知"],
     ["schoolType", "Public", "公立"],
     ["schoolType", "Private Day", "私立走读"],
     ["schoolType", "Private Boarding School", "私立寄宿"],
+    ["schoolType", "Unknown", "未知"],
     ["schoolFeed", "Feeder School", "输送型学校"],
     ["schoolFeed", "Non-feeder", "非输送型学校"],
+    ["schoolFeed", "Unknown", "未知"],
     ["difficulty", "Easy", "简单"],
     ["difficulty", "Medium", "中等"],
     ["difficulty", "Hard", "困难"]
@@ -185,8 +189,71 @@ test("enum translation covers every supported structured value and preserves unk
     assert.equal(I18N.translateEnumValue("zh-CN", group, value), expected);
   }
   assert.equal(I18N.translateEnumValue("zh-CN", "gender", "Nonbinary custom value"), "Nonbinary custom value");
+  assert.equal(I18N.translateEnumValue("zh-CN", "schoolType", "International school"), "International school");
+  assert.equal(I18N.translateEnumValue("zh-CN", "schoolFeed", "Average public"), "Average public");
   assert.equal(I18N.translateEnumValue("zh-CN", "gender", null), null);
   assert.equal(I18N.translateEnumValue("en", "gender", "Female"), "Female");
+});
+
+test("Task 4 resources cover profile, tier, school, and accessibility copy", () => {
+  const { I18N } = loadGlobal();
+  const requiredKeys = [
+    "stepper.progress",
+    "rank.pointsTitle", "rank.pointsValue", "rank.pointsToNext", "rank.maxReached",
+    "profile.applicant", "profile.start", "profile.overview", "profile.extracurriculars",
+    "profile.correctFinalized", "profile.bestUniversityBand", "profile.noUniversityAdmit",
+    "profile.bestLacBand", "profile.noLacAdmit", "profile.admittedSchools",
+    "profile.universities", "profile.liberalArtsColleges", "profile.otherAdmits",
+    "profile.admittedStamp", "profile.admittedOn", "profile.ethnicity", "profile.region",
+    "profile.classification", "profile.legacy", "profile.firstGeneration",
+    "profile.testOptional", "profile.satSuperscore", "profile.actComposite",
+    "profile.gpaUnweighted", "profile.rigor", "profile.apCount",
+    "profile.postApAndHonors", "profile.apScoreBreakdown", "profile.reportedPending",
+    "profile.chartBar", "profile.chartDonut", "profile.courseHistory", "profile.year",
+    "profile.course", "profile.level", "profile.scoreValue", "profile.pending",
+    "profile.reported", "profile.ecTier", "tier.profileReview", "tier.bandExplanation",
+    "tier.panelUniversity", "tier.panelLac", "tier.choiceCount",
+    "tier.noUniversityClaim", "tier.noUniversityClaimHint", "tier.noLacClaim",
+    "tier.noLacClaimHint", "tier.lacSeparateRanking", "tier.claimPoints",
+    "tier.correctClaimScoring", "tier.lockPredictions", "tier.timeBonusState",
+    "tier.timeBonusFull", "tier.timeBonusShrinking", "tier.timeBonusFloor",
+    "schools.universityTierLabel", "schools.lacTierLabel", "schools.withinTier",
+    "schools.scoringSummary", "schools.schoolSelection", "schools.universityTier",
+    "schools.lacTier", "schools.upTo", "schools.scoringHint", "schools.changeTiers",
+    "schools.revealResults", "schools.claimLocked", "schools.skippedClaim",
+    "schools.schoolCount", "schools.emptyBand", "schools.selectCard", "schools.deselectCard"
+  ];
+  for (const key of requiredKeys) {
+    assert.equal(typeof I18N.resources.en[key], "string", `missing English key ${key}`);
+    assert.equal(typeof I18N.resources["zh-CN"][key], "string", `missing Chinese key ${key}`);
+  }
+});
+test("all stable tier codes have localized range resources without changing identifiers", () => {
+  const { I18N } = loadGlobal();
+  const { sandbox } = loadScript(tiersSource);
+  const tierCodes = [
+    ...sandbox.TIERS.UNI_TIER_LIST,
+    ...sandbox.TIERS.LAC_TIER_LIST
+  ];
+  assert.deepEqual(tierCodes, ["HYPSM", "T10", "T15", "T20", "T30", "T50", "T5 LAC", "T10 LAC", "T20 LAC"]);
+  for (const code of tierCodes) {
+    const key = `ranges.${code}`;
+    assert.equal(typeof I18N.resources.en[key], "string", `missing English range ${key}`);
+    assert.equal(typeof I18N.resources["zh-CN"][key], "string", `missing Chinese range ${key}`);
+    assert.notEqual(I18N.resources.en[key], I18N.resources["zh-CN"][key], `untranslated range ${key}`);
+  }
+});
+
+test("tier explanation describes the exclusive T10, T15, and T20 bands accurately", () => {
+  const { I18N } = loadGlobal();
+  assert.match(
+    I18N.resources.en["tier.bandExplanation"],
+    /T10 means ranks 6–10 only, T15 means 11–15, T20 means 16–20/
+  );
+  assert.match(
+    I18N.resources["zh-CN"]["tier.bandExplanation"],
+    /T10 仅指第 6–10 名，T15 仅指第 11–15 名，T20 仅指第 16–20 名/
+  );
 });
 
 test("date formatting is locale-specific and invalid dates have a stable fallback", () => {
@@ -204,8 +271,13 @@ test("date formatting is locale-specific and invalid dates have a stable fallbac
   assert.equal(zhCN.formatDate(date, options), "2024年1月2日");
   assert.notEqual(en.formatDate(date, options), zhCN.formatDate(date, options));
 
-  assert.equal(en.formatDate("not-a-date"), "not-a-date");
-  assert.equal(zhCN.formatDate("not-a-date"), "not-a-date");
+  const nonUtcOptions = { timeZone: "America/Los_Angeles", year: "numeric", month: "long", day: "numeric" };
+  assert.equal(en.formatDate("2024-01-02", nonUtcOptions), "January 2, 2024");
+  assert.equal(zhCN.formatDate("2024-01-02", nonUtcOptions), "2024年1月2日");
+  for (const invalid of [undefined, null, "", "not-a-date", "2024-02-30"]) {
+    assert.equal(en.formatDate(invalid), "—");
+    assert.equal(zhCN.formatDate(invalid), "—");
+  }
   assert.equal(en.translateEnum("schoolType", "Private Boarding School"), "Private Boarding School");
   assert.equal(I18NForLocale("zh-CN").translateEnum("school_type", "Private Boarding School"), "私立寄宿");
 });
