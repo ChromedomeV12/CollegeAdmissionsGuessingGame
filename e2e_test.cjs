@@ -8,6 +8,8 @@
 
 const net = require("net");
 const http = require("http");
+const fs = require("fs");
+const os = require("os");
 const { spawn } = require("child_process");
 const path = require("path");
 const puppeteer = require("puppeteer");
@@ -106,15 +108,26 @@ let serverStderr = "";
 
 async function main() {
   const port = await getFreePort();
-  log("Using port", port);
+  const productionE2E = process.env.E2E_PRODUCTION === "1";
+  const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "admissions-oracle-e2e-"));
+  fs.copyFileSync(path.join(REPO_DIR, "data", "profiles.jsonl"), path.join(testDataDir, "profiles.jsonl"));
+  const runtimeEnv = {
+    ...process.env,
+    HOST: "127.0.0.1",
+    PORT: String(port),
+    DATA_DIR: testDataDir,
+    ...(productionE2E ? {
+      NODE_ENV: "production",
+      STATIC_DIR: path.join(REPO_DIR, "dist"),
+      JWT_SECRET: "production-e2e-secret-production-e2e-secret-1234567890",
+    } : {}),
+  };
+  log("Using port", port, `(${productionE2E ? "production" : "development"})`);
 
   // Spawn server.js with PORT env. type:module ESM — just `node server.js`.
   const serverProc = spawn("node", ["server.js"], {
     cwd: REPO_DIR,
-    env: {
-      ...process.env,
-      PORT: String(port),
-    },
+    env: runtimeEnv,
     stdio: ["ignore", "pipe", "pipe"],
   });
   serverProc.stdout.on("data", (d) => (serverStdout += d.toString()));
@@ -154,7 +167,15 @@ async function main() {
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
     const page = await browser.newPage();
+    const externalHosts = new Set();
     page.setDefaultTimeout(POLL_TIMEOUT_MS);
+    page.on("request", (request) => {
+      if (!productionE2E) return;
+      const url = new URL(request.url());
+      if (["http:", "https:"].includes(url.protocol) && url.hostname !== "127.0.0.1") {
+        externalHosts.add(url.hostname);
+      }
+    });
     page.on("console", (msg) => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
@@ -818,6 +839,7 @@ async function main() {
       cwd: REPO_DIR,
       env: {
         ...process.env,
+        ...runtimeEnv,
         PORT: String(maintainerPort),
         SUBMISSIONS_ENABLED: "true",
         MAINTAINER_API_KEY: maintainerKey,
@@ -845,7 +867,10 @@ async function main() {
       if (!maintainerServer.killed) maintainerServer.kill("SIGKILL");
     }
 
-    log("ALL STEPS PASSED");
+    if (productionE2E && externalHosts.size > 0) {
+      throw new Error(`Production E2E contacted third-party hosts: ${[...externalHosts].sort().join(", ")}`);
+    }
+    log(`ALL STEPS PASSED (${productionE2E ? "production" : "development"})`);
     return 0;
   } finally {
     if (browser) {
@@ -858,6 +883,7 @@ async function main() {
     try {
       if (!serverProc.killed) serverProc.kill("SIGKILL");
     } catch (_) {}
+    fs.rmSync(testDataDir, { recursive: true, force: true });
   }
 }
 

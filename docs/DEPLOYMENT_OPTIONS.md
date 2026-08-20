@@ -30,9 +30,9 @@ The current runtime is not a static site:
 
 GitHub Pages cannot host the app as written because it publishes static HTML, CSS, and JavaScript, not the Express API ([GitHub Pages overview](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages)). Cloud Run has a free allowance and can run Node containers, but its writable filesystem is disposable, so the existing SQLite design is not durable there ([Cloud Run filesystem](https://docs.cloud.google.com/run/docs/overview/what-is-cloud-run)).
 
-## Current browser dependency risk
+## Development-source dependency risk and production status
 
-`public/index.html` currently makes runtime requests to:
+The source-oriented development page at `public/index.html` still makes runtime requests to:
 
 | Purpose | Host today | Failure impact |
 |---|---|---|
@@ -48,15 +48,14 @@ Two of the current choices are also explicitly development-only: Tailwind says P
 
 The Clearbit Logo API is not merely a regional risk: HubSpot shut it down on 2025-12-08 and states that `logo.clearbit.com` requests no longer return logos ([HubSpot sunset notice](https://developers.hubspot.com/changelog/upcoming-sunset-of-clearbits-free-logo-api)).
 
-Before any public deployment:
+The production path now resolves these items:
 
-1. Add a build step (Vite or equivalent) and bundle production React/ReactDOM.
-2. Transpile JSX ahead of time; remove browser-side Babel.
-3. Compile Tailwind at build time, or remove the remaining utility dependency.
-4. Install and bundle Three.js and icons, preserving the existing no-WebGL fallback.
-5. Self-host licensed font files or use a robust system-font stack.
-6. Remove the retired Clearbit request and use the existing initials or local licensed assets.
-7. Serve hashed local assets with a restrictive Content Security Policy. Keep dependency versions locked and reproducible.
+1. `npm run build` bundles production React/ReactDOM, Three.js, and Tabler icons.
+2. JSX is transpiled ahead of time; production does not load browser Babel.
+3. The Tailwind Play CDN and Google Fonts are removed from the production page in favor of existing application CSS and a system font stack.
+4. The retired Clearbit request is removed and school initials are rendered locally.
+5. Hashed local assets are served with immutable caching and a restrictive Content Security Policy.
+6. `npm run test:production` boots the built app in a browser and rejects third-party HTTP(S) requests or browser errors.
 
 This change improves every region: one first-party origin becomes the only page-load dependency, and a blocked or slow third-party host can no longer prevent boot.
 
@@ -114,16 +113,16 @@ Do not split SQLite across regions. Either keep one authoritative region and acc
 
 - Keep the current local workflow and `npm test` gate.
 - Keep `SUBMISSIONS_ENABLED=false`.
-- Finish the production bundle/self-hosting work before evaluating carrier performance.
+- Use the production build and smoke test, rather than the CDN-backed development page, before evaluating carrier performance.
 
 ### Stage 1 — zero-dollar private demo
 
 1. Provision one eligible Oracle Always Free VM; choose the home region carefully because Always Free compute is home-region-bound.
 2. Confirm the selected CPU architecture can install `better-sqlite3` before moving data.
-3. Put the repository and `data/` on persistent block storage; run one app process under `systemd`.
-4. Reverse-proxy with Caddy. A registered domain is normally a separate cost; Caddy's certificate automation itself does not require a paid certificate.
-5. Put the entire demo behind a VPN, an identity-aware proxy, or a narrow IP allowlist; do not expose the raw origin. The current public register/login endpoints are not rate-limited and bcrypt work can exhaust a small VM.
-6. Allow inbound 80/443 only through that access boundary, keep SSH restricted, set a strong `JWT_SECRET`, and keep maintainer submission routes disabled.
+3. Deploy `deploy/compose.private.yaml`; its named volume keeps `/app/data` persistent and it runs one app process.
+4. Keep the application published only on VM loopback and access it through the documented SSH tunnel. A reviewed VPN or identity-aware proxy can replace the tunnel later.
+5. Do not expose the raw origin. The current public register/login endpoints are not rate-limited and bcrypt work can exhaust a small VM.
+6. Keep SSH restricted, set a strong `JWT_SECRET`, and keep maintainer submission routes disabled.
 7. Back up `profiles.jsonl` and a consistent SQLite snapshot to a second location; rehearse restore.
 8. Add uptime and disk-space checks. Expect possible free-capacity or idle-reclamation interruptions.
 
@@ -135,6 +134,7 @@ This is the recommended “launch somewhere for free” answer, with the explici
 - Use one instance while SQLite remains the database.
 - Add persistent IP- and account-aware rate limits for registration and login, plus credential-abuse monitoring, before exposing those endpoints publicly.
 - Publish privacy, consent, and deletion information; replace legacy seed cases with consented or synthetic content.
+- If optional OpenRouter structuring is enabled, obtain explicit owner consent for that external data transfer and review the provider contract, retention, and deletion terms before sending post text.
 - Separate player and maintainer environments. Do not expose the maintainer key to a browser bundle.
 - Add health checks, log retention, alerting, dependency/security updates, and a restore objective.
 
@@ -148,8 +148,8 @@ This is the recommended “launch somewhere for free” answer, with the explici
 
 ## Go/no-go checklist
 
-- [ ] Production bundle contains no boot-critical third-party CDN requests.
-- [ ] Retired Clearbit logo requests are removed; local initials/assets are verified.
+- [x] Production bundle contains no boot-critical third-party CDN requests.
+- [x] Retired Clearbit logo requests are removed; local initials/assets are verified.
 - [ ] Node version and `better-sqlite3` install are verified on the target architecture.
 - [ ] `data/` is on persistent storage; app runs as a single SQLite writer topology.
 - [ ] Automated off-host backup and restore test pass.

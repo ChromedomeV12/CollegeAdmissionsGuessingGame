@@ -1,8 +1,8 @@
 // Phase 1 — Profile viewer with three tabs
 
 function Phase1Profile({ profile, onStart, profileIdx, profileCount, canViewCorrectChoices = false }) {
-  const [tab, setTab] = useState("overview");
-  const [chartMode, setChartMode] = useState("bar"); // bar | donut
+  const [tab, setTab] = React.useState("overview");
+  const [chartMode, setChartMode] = React.useState("bar"); // bar | donut
   const { t } = window.I18N.useI18n();
 
   const d = profile.demographics || {};
@@ -165,7 +165,7 @@ function OverviewTab({ d }) {
 function AcademicsTab({ sat, act, gpa, rigor, chartMode, setChartMode }) {
   const { t } = window.I18N.useI18n();
   // flat list of every AP course across years
-  const allCourses = useMemo(() => {
+  const allCourses = React.useMemo(() => {
     const out = [];
     for (const [yr, list] of Object.entries(rigor.courses_by_year || {})) {
       for (const c of list) out.push({ ...c, year: yr });

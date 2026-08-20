@@ -193,7 +193,7 @@ function Phase4Results({
 }) {
   const { t, formatDate } = window.I18N.useI18n();
   const showDetails = !!isPractice || !!scoringFinalized;
-  const feedback = useMemo(() => {
+  const feedback = React.useMemo(() => {
     if (showDetails) {
       return scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, noUniClaim, noLacClaim);
     }

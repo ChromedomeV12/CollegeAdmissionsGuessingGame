@@ -1,8 +1,8 @@
 # Admissions Oracle - Agent Instructions
 
 ## Architecture & Data Flow
-- **Frontend (`public/`)**: React SPA compiled in-browser via `@babel/standalone`; no build step. Signed-in users land on Home, then enter Profile → Tier → Schools → Reveal. `styles-v2.css` is authoritative semantic CSS; Tailwind Play CDN has preflight disabled. `ambient-waves.js` renders a full-viewport Three.js sculpted-fold wallpaper with a broad filled-SVG fallback.
-- **Backend (`server.js`)**: Express serves `public/` and one `/api/*` mount. There are no legacy non-API routes. Unknown `/api/*` paths return `404 {"error":"Not found"}`.
+- **Frontend (`public/`)**: React SPA source. Development keeps the simple in-browser Babel/CDN page, while `npm run build` transpiles JSX and bundles React, ReactDOM, Three.js, and Tabler icons into first-party `dist/` assets. Production must serve `dist/`; `styles-v2.css` is authoritative semantic CSS and `ambient-waves.js` retains its broad filled-SVG fallback.
+- **Backend (`server.js`)**: Express serves `public/` in development, `dist/` in production, and one `/api/*` mount. Production fails closed without a strong `JWT_SECRET`, adds CSP/security headers, and exposes `/healthz` plus `/readyz`. There are no legacy non-API routes. Unknown `/api/*` paths return `404 {"error":"Not found"}`.
 - **Hybrid Storage**:
   - **Static Content (`data/profiles.jsonl`)**: read-only to the server, reloaded on each `/api/profiles` request, and the only profile source. List responses strip outcomes/source; `/api/profiles/:id` requires bearer auth plus a persisted finalization lock before returning outcomes.
   - **Dynamic State (`data/game.db`)**: SQLite (`better-sqlite3`, WAL) storing accounts, server-finalized scores, durable game attempts, permanent Practice locks, rivals, consent receipts, and private Reddit submission records.
@@ -10,7 +10,7 @@
 
 ## Development Commands
 - **Run Server**: `npm run dev` (Express via `node --watch`).
-- **Run Tests**: `npm test` runs `npm run test:unit` (`node --test test/*.test.js`) then `npm run test:e2e` (`node e2e_test.cjs`, the Puppeteer harness). `.cjs` because `package.json` is `"type": "module"`. **No manual setup** — the e2e harness picks a free port and spawns `server.js` itself.
+- **Run Tests**: `npm test` runs unit tests, the full development E2E, then `npm run test:production`, which builds and boots the CSP-protected first-party bundle in a second Puppeteer smoke test. `.cjs` is used for browser harnesses because `package.json` is `"type": "module"`. **No manual setup** — each harness picks a free port and spawns `server.js` itself.
 - **Export verified drafts**: `npm run export-verified` (see pipeline below — connects verified consent submissions to the game draft queue).
 - **Approve**: `npm run approve` (see pipeline below).
 

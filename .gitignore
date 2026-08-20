@@ -1,4 +1,7 @@
 node_modules/
+dist/
+backups/
+deploy/private.env
 .env
 .DS_Store
 *.db

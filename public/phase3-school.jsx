@@ -85,7 +85,7 @@ function getSchoolDomain(name) {
   return null;
 }
 
-// ─── School color accents (used when logo fails) ─────────────────────────────
+// ─── School color accents for first-party initial marks ──────────────────────
 const SCHOOL_COLORS = {
   "harvard": "#A51C30", "mit": "#A31F34", "stanford": "#8C1515",
   "yale": "#00356B", "princeton": "#FF6B35", "columbia": "#B9D9EB",
@@ -114,32 +114,17 @@ function getSchoolColor(name) {
 
 // ─── SchoolLogo component ─────────────────────────────────────────────────────
 function SchoolLogo({ name, size = 28 }) {
-  const domain = getSchoolDomain(name);
   const color = getSchoolColor(name);
-  const initial = name.trim()[0].toUpperCase();
-  const [imgFailed, setImgFailed] = React.useState(false);
-
-  if (!domain || imgFailed) {
-    return (
-      <span style={{
-        display: "inline-flex", alignItems: "center", justifyContent: "center",
-        width: size, height: size, borderRadius: 6, flexShrink: 0,
-        background: color, color: "#fff",
-        fontSize: size * 0.45, fontWeight: 700, letterSpacing: "-0.02em",
-      }}>
-        {initial}
-      </span>
-    );
-  }
-
+  const initial = String(name || "?").trim().charAt(0).toUpperCase() || "?";
   return (
-    <img
-      src={`https://logo.clearbit.com/${domain}`}
-      alt={name}
-      width={size} height={size}
-      style={{ borderRadius: 6, objectFit: "contain", flexShrink: 0, background: "#fff", padding: 2 }}
-      onError={() => setImgFailed(true)}
-    />
+    <span aria-hidden="true" style={{
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      width: size, height: size, borderRadius: 6, flexShrink: 0,
+      background: color, color: "#fff",
+      fontSize: size * 0.45, fontWeight: 700, letterSpacing: "-0.02em",
+    }}>
+      {initial}
+    </span>
   );
 }
 
@@ -185,9 +170,9 @@ function Phase3School({
   isPractice = false, attemptStartedAt = null
 }) {
   const { t } = window.I18N.useI18n();
-  const uni = useMemo(() => computeAvailable(profile, noUniClaim ? null : universityTierPick, "uni"),
+  const uni = React.useMemo(() => computeAvailable(profile, noUniClaim ? null : universityTierPick, "uni"),
     [profile, universityTierPick, noUniClaim]);
-  const lac = useMemo(() => computeAvailable(profile, noLacClaim ? null : lacTierPick, "lac"),
+  const lac = React.useMemo(() => computeAvailable(profile, noLacClaim ? null : lacTierPick, "lac"),
     [profile, lacTierPick, noLacClaim]);
 
   function toggle(key) {

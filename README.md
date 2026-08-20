@@ -26,8 +26,8 @@ This project is co-owned and co-developed by ChromedomeV12 (repo owner) and Maso
 
 ## Architecture
 
-1. **Frontend (`public/`)** — React SPA, no build step: JSX is compiled in the browser by `@babel/standalone`. Signed-in users land on Home, then enter four game phases (Profile → Tier → Schools → Reveal), persistent Tokyo Night/Day themes, a global leaderboard, and rival head-to-head comparisons.
-2. **Backend (`server.js`)** — Express. Serves `public/` statically and exposes the JSON API under `/api/*` (unknown `/api` paths return 404 JSON, not the SPA). JWT sessions (`jsonwebtoken`), bcrypt password hashing (`bcryptjs`).
+1. **Frontend (`public/`)** — React SPA. The development page keeps the simple source-script workflow, while `npm run build` transpiles JSX ahead of time and bundles React, ReactDOM, Three.js, and Tabler icons into first-party `dist/` assets for production. Signed-in users land on Home, then enter four game phases (Profile → Tier → Schools → Reveal), persistent Tokyo Night/Day themes, a global leaderboard, and rival head-to-head comparisons.
+2. **Backend (`server.js`)** — Express. Serves `public/` in development and the built `dist/` tree in production, with JSON APIs under `/api/*` (unknown `/api` paths return 404 JSON, not the SPA). JWT sessions (`jsonwebtoken`), bcrypt password hashing (`bcryptjs`). Production startup fails closed without a strong `JWT_SECRET`.
 
 3. **Storage (hybrid)**:
    - `data/profiles.jsonl` — static game content. Read-only to the server and reloaded for profile-list requests. Replace the file to update content.
@@ -37,12 +37,12 @@ This project is co-owned and co-developed by ChromedomeV12 (repo owner) and Maso
 - **Tokyo Night / Tokyo Day**: use the moon/sun button in the signed-in topbar. The choice persists as `ao_theme` in local storage. Exact palette anchors and derived web surfaces live in `public/styles-v2.css`.
 - **Palette integrity**: canvas, text, comments and semantic blue/magenta/cyan/green/yellow/red tokens use the supplied Tokyo values exactly; intermediate surfaces and borders are derived with `color-mix()` rather than unrelated hex colors.
 - **Matte glass**: semantic cards/topbars keep strong Tokyo surface identity with restrained 12px blur, higher surface opacity, token borders, and theme-aware shadows.
-- **Sculpted wallpaper**: a full-viewport Three.js shader builds six overlapping organic fold boundaries with Tokyo-derived layer colors, crest highlights, and deep valley shadows—closer to macOS abstract cloth/paper relief than line art. Motion is a very slow ≥45s breathing drift plus ≤64px scroll and ≤8px pointer parallax (30fps cap, paused when hidden). Reduced-motion draws one static frame. A broad six-layer filled-SVG fallback preserves the same folded look if Three/WebGL/CDN fails; the geometric grid and topographic contours are removed.
-- Tailwind Play CDN is configured with preflight disabled for no-build utility classes; the existing semantic CSS remains authoritative.
+- **Sculpted wallpaper**: a full-viewport Three.js shader builds six overlapping organic fold boundaries with Tokyo-derived layer colors, crest highlights, and deep valley shadows—closer to macOS abstract cloth/paper relief than line art. Motion is a very slow ≥45s breathing drift plus ≤64px scroll and ≤8px pointer parallax (30fps cap, paused when hidden). Reduced-motion draws one static frame. A broad six-layer filled-SVG fallback preserves the same folded look if Three/WebGL initialization fails; the geometric grid and topographic contours are removed.
+- `styles-v2.css` is authoritative. The production build uses a system font stack and removes Tailwind Play CDN, Google Fonts, browser Babel, and every boot-critical third-party asset request.
 
 ## Language support
 
-The interface supports English (`en`) and Simplified Chinese (`zh-CN`) without a build step or runtime translation service. A first visit starts in English. The globe control switches languages in place, persists the exact locale in local storage as `ao_lang`, and keeps the document `<html lang>` attribute synchronized across reloads.
+The interface supports English (`en`) and Simplified Chinese (`zh-CN`) without a runtime translation service. A first visit starts in English. The globe control switches languages in place, persists the exact locale in local storage as `ao_lang`, and keeps the document `<html lang>` attribute synchronized across reloads.
 
 This first localization phase translates app-owned UI copy, accessible names, dates, and the approved structured profile enums. Stable product data remains unchanged in both modes: applicant IDs, usernames, school names, tier codes, scores, API fields, and URLs. Free-form imported profile prose—including course/activity descriptions, awards, and teaching points—is intentionally preserved rather than machine-translated. Translation resources and locale helpers live in `public/i18n.js`.
 
@@ -66,6 +66,8 @@ This first localization phase translates app-owned UI copy, accessible names, da
 | DELETE | `/api/rivals/:username` | Bearer | Remove a rival. |
 | GET | `/api/duel/:username` | Bearer | Head-to-head scores on cases completed by both players. |
 | GET | `/api/stats` | — | Aggregate play stats. |
+| GET | `/healthz` | — | Process liveness probe; returns `{"status":"ok"}`. |
+| GET | `/readyz` | — | SQLite/profile readiness probe; returns 503 until usable. |
 | GET | `/api/submissions/config` | Bearer | Reports `enabled`, OAuth availability, fallback availability, and consent version. |
 | GET / POST / DELETE | `/api/submissions...` | Bearer + `X-Maintainer-Key` + `SUBMISSIONS_ENABLED=true` | Maintainer-only consent/ownership workflow. Disabled deployments return `503 {"error":"Submission tools are disabled"}`; enabled deployments reject missing/wrong keys with 403. |
 | GET | `/api/submissions/reddit/callback` | OAuth state + `SUBMISSIONS_ENABLED=true` | Complete temporary Reddit ownership verification; the unguessable state binds the flow to the enabled maintainer request. |
@@ -94,13 +96,23 @@ npm run dev            # http://localhost:3005
 
 `.env` keys: `PORT`, `JWT_SECRET`, `SUBMISSIONS_ENABLED` (default `false`), and `MAINTAINER_API_KEY` (required, nonempty, for maintainer submission routes). Maintainers who deliberately enable submission tooling may also set `REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET`/`REDDIT_REDIRECT_URI`, `REDDIT_USER_AGENT`, and `OPENROUTER_API_KEY` (optional LLM structuring during `npm run approve`). Create a Reddit **web app** and register the redirect URI exactly (production must use HTTPS). Without the `REDDIT_*` credentials, the tool attempts edit-code fallback, but Reddit may block the public `.json` confirmation request with HTTP 403; fallback is best-effort, not a guaranteed substitute for approved API access.
 
+Build the self-hosted production assets with:
+
+```bash
+npm run build
+node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"
+NODE_ENV=production JWT_SECRET="paste-the-generated-value-here" npm start
+```
+
+`dist/` is generated and ignored by Git. The production server adds a restrictive Content Security Policy and long-lived caching only for hashed vendor assets.
+
 ## Testing
 
 ```bash
 npm test
 ```
 
-Runs the Node unit suite (shared server/browser scoring, both no-admit claims, actual no-admit tier boundaries, bilingual resource/runtime contracts, invalid predictions, Reddit URL/OAuth/ownership helpers, post sanitization, and design-contrast checks) followed by `e2e_test.cjs`. The browser test registers a throwaway user, verifies Home/theme persistence and in-place language switching, denied anonymous/premature detail access, failed-write safety, Escape/reload recovery, a bounded Chinese aggregate/retry/finalized/Practice flow, in-place return to English, lower retry replacement, timeout finalization, persistent Correct choices, immutable Practice scores, real rival/duel rows, and the seasonless global leaderboard/API row. It writes to the real `data/game.db` with unique usernames per run.
+Runs the Node unit suite (shared server/browser scoring, deployment configuration/build gates, health/readiness behavior, both no-admit claims, bilingual resource/runtime contracts, invalid predictions, Reddit URL/OAuth/ownership helpers, post sanitization, and design-contrast checks), followed by the complete development E2E and a separate production-mode browser smoke test. The production smoke test verifies the built page boots under CSP, serves hashed assets with immutable caching, and makes no third-party HTTP requests. The game E2E writes to the real `data/game.db` with unique usernames per run.
 
 Acceptance checks: [AGENT_CHECKLIST.md](AGENT_CHECKLIST.md) — the agent-run self-check workflow (boot, API, auth, all four phases, navigation/persistence, console-error watch, screenshots, and the `npm test` gate).
 
@@ -123,14 +135,12 @@ Bulk subreddit scraping and arbitrary `--url` imports remain disabled. See [Cons
 - **Editorial dashboard** — consent import is a maintainer-only API/CLI workflow. Ownership verification plus export (`npm run export-verified`) is implemented, but approval remains CLI-only (`npm run approve`).
 - **Reddit app review** — Reddit may require review or approval before API use. The edit-code fallback avoids OAuth but depends on public JSON availability.
 - **Reddit public JSON blocking** — verified on 2026-08-19: `www.reddit.com` and `old.reddit.com` returned HTTP 403 from browser and server-side requests. Do not bypass this by exporting personal cookies; use approved API access, a dedicated throwaway test profile for one-off diagnostics, or a reviewed manual workflow.
-- **Runtime frontend CDN** — Tailwind Play CDN fits the current no-build architecture, but a production deployment should pin/bundle Tailwind via a real build pipeline (Vite/Tailwind CLI) to remove runtime Play-CDN risk.
+- **Development source page** — the local no-build page still uses development CDNs for convenience. Production deployments must run `npm run build`; the build and production smoke gate reject boot-critical third-party dependencies.
 - **Legacy seed consent** — the eight current seed cases predate the new proof flow. Replace them with consented or synthetic cases before a broad public launch.
 - `public/uploads/` still holds early prototype artifacts (`sample.jsonl`, original scraper prompt) — candidates for pruning.
 
 ## Deployment notes
 
-- Deploy `server.js` to any Node host (Railway, Render, DO, EC2).
-- Mount `data/` on a persistent volume so `game.db` survives restarts.
-- Always set `JWT_SECRET` in the host environment.
-- Keep `SUBMISSIONS_ENABLED=false` for the player-facing deployment. If a separate maintainer environment enables it, set a long random `MAINTAINER_API_KEY` and send it as `X-Maintainer-Key`; configure a Reddit web app, exact HTTPS callback URL, and descriptive `REDDIT_USER_AGENT`.
-- Publish a privacy policy and deletion contact before enabling submission tooling. Reddit's Developer and Data API Terms can require app review and impose privacy/security obligations.
+- Start with the [private single-instance runbook](docs/PRIVATE_DEPLOYMENT_RUNBOOK.md): a non-root container, persistent SQLite volume, loopback-only binding, and SSH-tunnel access.
+- Review [deployment options](docs/DEPLOYMENT_OPTIONS.md) before choosing a provider. Free ephemeral services do not preserve this app's SQLite state.
+- Keep `SUBMISSIONS_ENABLED=false`. The private package is not a public launch; public exposure still requires persistent auth rate limits, automated off-host backups, privacy/deletion contacts, and consented or synthetic cases.
