@@ -2,6 +2,22 @@
 
 A React-based college admissions guessing game. Players study a deliberately small case library, predict admissions outcomes across university and liberal-arts-college tiers, and compare skill-based results. Reddit import remains a disabled-by-default maintainer tool, not a player feature.
 
+## Visual tour
+
+The same game flow is available in English and Simplified Chinese, with a persistent Tokyo Night/Day theme and no runtime translation dependency.
+
+| English Home | 简体中文主页 |
+|---|---|
+| ![Admissions Oracle Home in English, showing the score, retry, and pace overview](docs/images/home-en.jpg) | ![Admissions Oracle 简体中文主页，展示得分、重试和节奏说明](docs/images/home-zh-CN.jpg) |
+
+| Applicant profile | Tier prediction |
+|---|---|
+| ![Simplified Chinese applicant profile with localized labels and stable source data](docs/images/profile-zh-CN.jpg) | ![Simplified Chinese tier-prediction screen with university and liberal-arts-college bands](docs/images/tier-prediction-zh-CN.jpg) |
+
+| Practice reveal | Leaderboard |
+|---|---|
+| ![Simplified Chinese Practice reveal showing a score of 100 and explicit not-recorded feedback](docs/images/reveal-practice-zh-CN.jpg) | ![Simplified Chinese global leaderboard showing average score and completed-case rankings](docs/images/leaderboard-zh-CN.jpg) |
+
 ## License
 
 MIT — see [LICENSE](LICENSE). Contributing rules: [CONTRIBUTING.md](CONTRIBUTING.md). Vulnerability reporting: [SECURITY.md](SECURITY.md).
