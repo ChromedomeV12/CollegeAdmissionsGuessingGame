@@ -130,74 +130,51 @@ function CelebrationBanner({ score, accuracy }) {
 
 function scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, noUniClaim, noLacClaim) {
   const T = window.TIERS;
-  const SC = window.SCORING;
-  const admittedSet = new Set(T.getAdmittedSchools(profile).map(T.normSchool));
+  const evaluator = window.GAME_SCORE;
+  if (!evaluator?.evaluate) throw new Error("Shared game scorer is unavailable");
 
   const uniAvail = computeAvailable(profile, noUniClaim ? null : universityTierPick, "uni");
   const lacAvail = computeAvailable(profile, noLacClaim ? null : lacTierPick, "lac");
   const visible = [...uniAvail.all, ...lacAvail.all];
+  const admittedSet = new Set(T.getAdmittedSchools(profile).map(T.normSchool));
+  const rows = visible.map(school => {
+    const wasSelected = schoolSelections.has(school.key);
+    const wasAdmit = admittedSet.has(school.key);
+    let status = "skipped-rejected";
+    if (wasSelected && wasAdmit) status = "correct";
+    else if (wasSelected) status = "wrong";
+    else if (wasAdmit) status = "missed";
+    return { ...school, wasSelected, wasAdmit, delta: 0, status };
+  });
 
-  // Actual uni/LAC band — the best (first in tier-list order) ranked band
-  // that contains at least one admit of that kind. Reuses the same tier-set
-  // + admit-key pattern as computeAvailable (getSchoolsInTier over admitted
-  // keys). -1 when no admit of that kind lands in any ranked band, which
-  // tierPoints(...) maps to 0 points.
+  // Practice feedback deliberately uses the exact evaluator loaded by the
+  // server. Equal timestamps disable the time adjustment for an unrecorded run.
+  const untimed = new Date(0).toISOString();
+  const scored = evaluator.evaluate(profile, {
+    universityTierPick: noUniClaim ? null : universityTierPick,
+    lacTierPick: noLacClaim ? null : lacTierPick,
+    noUniClaim: !!noUniClaim,
+    noLacClaim: !!noLacClaim,
+    schoolSelections: [...schoolSelections],
+  }, untimed, untimed);
   function actualBandIndex(tierList, kind) {
-    const admitKeys = new Set(
-      T.getAdmittedSchools(profile)
-        .filter(n => T.schoolKind(n) === kind)
-        .map(T.normSchool)
-    );
-    if (admitKeys.size === 0) return -1;
-    for (let i = 0; i < tierList.length; i++) {
-      const band = T.getSchoolsInTier(tierList[i], kind);
-      if (band.some(s => admitKeys.has(s.key))) return i;
+    for (let index = 0; index < tierList.length; index += 1) {
+      if (T.getSchoolsInTier(tierList[index], kind).some(school => admittedSet.has(school.key))) return index;
     }
     return -1;
   }
-
   const uniActualIdx = actualBandIndex(T.UNI_TIER_LIST, "uni");
   const lacActualIdx = actualBandIndex(T.LAC_TIER_LIST, "lac");
   const hasUniAdmit = uniActualIdx >= 0;
   const hasLacAdmit = lacActualIdx >= 0;
-  // Per-school rows are kept for display only. Deltas are informational (0);
-  // the aggregate selection score comes from SCORING.caseScore's Jaccard, so
-  // we never reintroduce per-school -2/-5 deductions.
-  const rows = visible.map(s => {
-    const wasSelected = schoolSelections.has(s.key);
-    const wasAdmit = admittedSet.has(s.key);
-    let status;
-    if (wasSelected && wasAdmit) status = "correct";
-    else if (wasSelected && !wasAdmit) status = "wrong";
-    else if (!wasSelected && wasAdmit) status = "missed";
-    else status = "skipped-rejected";
-    return { ...s, wasSelected, wasAdmit, delta: 0, status };
-  });
-
-  // Admits that fell inside the player's visible tier window — the
-  // "admittedInViewKeys" set the selection Jaccard is measured against.
-  const admittedInViewKeys = visible.filter(s => admittedSet.has(s.key)).map(s => s.key);
-
-  const cs = SC.caseScore({
-    uniPickIdx: noUniClaim ? -1 : T.UNI_TIER_LIST.indexOf(universityTierPick),
-    lacPickIdx: noLacClaim ? -1 : T.LAC_TIER_LIST.indexOf(lacTierPick),
-    noUniClaim: !!noUniClaim,
-    hasUniAdmit,
-    noLacClaim: !!noLacClaim,
-    hasLacAdmit,
-    uniActualIdx,
-    lacActualIdx,
-    selectedKeys: visible.filter(s => schoolSelections.has(s.key)).map(s => s.key),
-    admittedInViewKeys,
-  });
 
   return {
     rows,
-    score: cs.score,
-    accuracy: cs.accuracy,
-    uniPts: cs.uniPts,
-    lacPts: cs.lacPts,
-    selectionPts: cs.selectionPts,
+    score: scored.score,
+    accuracy: scored.accuracy,
+    uniPts: scored.uniPts,
+    lacPts: scored.lacPts,
+    selectionPts: scored.selectionPts,
     hasUniAdmit,
     hasLacAdmit,
     uniAvail,
@@ -209,85 +186,78 @@ function scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, no
 
 function Phase4Results({
   profile, universityTierPick, lacTierPick, noUniClaim, noLacClaim, schoolSelections,
-  average, rank, onCommitScore,
-  onTryAgain, onRetry, onRetryExpired, onFinalizeScoring, onNext, hasNext,
-  guessStartAt, isPractice, retryUsed
+  average, rank, result: serverResult, retryDeadline, scoringFinalized,
+  onTryAgain, onRetry, onFinalizeScoring, onNext, hasNext,
+  isPractice
 }) {
-  const { rows, score, accuracy, uniAvail, lacAvail, uniPts, lacPts, selectionPts, hasUniAdmit, hasLacAdmit } =
-    useMemo(() =>
-      scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, noUniClaim, noLacClaim),
-      [profile, universityTierPick, lacTierPick, schoolSelections, noUniClaim, noLacClaim]
-    );
-
-  // Guess duration, frozen once at reveal mount (the countdown ticking below
-  // must not re-measure it). null when no timer was started.
-  const [elapsedSeconds] = React.useState(() =>
-    guessStartAt ? Math.max(0, Math.round((Date.now() - guessStartAt) / 1000)) : null
-  );
-  const SC = window.SCORING;
-  const timeMult = elapsedSeconds != null && SC && SC.timeFactor ? SC.timeFactor(elapsedSeconds) : 1;
-  const finalScore = elapsedSeconds != null && SC && SC.applyTimeFactor ? SC.applyTimeFactor(score, elapsedSeconds) : score;
-
-  const firstScoringReveal = !isPractice && !retryUsed;
-  const RETRY_WINDOW_S = 5;
-  const [retryLeft, setRetryLeft] = React.useState(RETRY_WINDOW_S);
-  const [showDetails, setShowDetails] = React.useState(!!isPractice);
-  const commitPromise = React.useRef(null);
-  const lockNotified = React.useRef(false);
-  const finalizeNotified = React.useRef(false);
-  const retryRequested = React.useRef(false);
-
-  // Practice reveals never write a score. Both scoring attempts commit once;
-  // the retry attempt is finalized only after that Promise resolves.
-  React.useEffect(() => {
-    if (isPractice) {
-      setShowDetails(true);
-      return;
+  const showDetails = !!isPractice || !!scoringFinalized;
+  const feedback = useMemo(() => {
+    if (showDetails) {
+      return scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, noUniClaim, noLacClaim);
     }
-    if (commitPromise.current) return;
-    commitPromise.current = Promise.resolve().then(() => onCommitScore && onCommitScore(profile.id, finalScore, {
-      uniPts,
-      lacPts,
-      selectionPts,
-      accuracy,
-      rawScore: score,
-      timeSeconds: elapsedSeconds,
-      timeFactor: Number(timeMult.toFixed(3)),
-    }));
-  }, [isPractice, profile.id, finalScore]);
-
-  React.useEffect(() => {
-    if (!retryUsed || isPractice || finalizeNotified.current) return;
-    finalizeNotified.current = true;
-    (commitPromise.current || Promise.resolve())
-      .then(() => onFinalizeScoring && onFinalizeScoring())
-      .then(() => setShowDetails(true));
-  }, [retryUsed, isPractice, onFinalizeScoring]);
+    const unavailable = { all: [], admitted: new Set(), hit: false };
+    return {
+      rows: [], score: 0, accuracy: 0, uniPts: 0, lacPts: 0, selectionPts: 0,
+      hasUniAdmit: false, hasLacAdmit: false, uniAvail: unavailable, lacAvail: unavailable,
+    };
+  }, [showDetails, profile, universityTierPick, lacTierPick, schoolSelections, noUniClaim, noLacClaim]);
+  const practiceResult = isPractice ? {
+    score: feedback.score,
+    rawScore: feedback.score,
+    accuracy: feedback.accuracy,
+    uniPts: feedback.uniPts,
+    lacPts: feedback.lacPts,
+    selectionPts: feedback.selectionPts,
+    timeSeconds: null,
+    timeFactor: 1,
+  } : null;
+  const result = isPractice ? practiceResult : serverResult;
+  const {
+    rows, uniAvail, lacAvail, hasUniAdmit, hasLacAdmit,
+  } = feedback;
+  const finalScore = result?.score ?? 0;
+  const accuracy = result?.accuracy ?? 0;
+  const uniPts = result?.uniPts ?? 0;
+  const lacPts = result?.lacPts ?? 0;
+  const selectionPts = result?.selectionPts ?? 0;
+  const elapsedSeconds = isPractice ? null : result?.timeSeconds;
+  const timeMult = isPractice ? 1 : (result?.timeFactor ?? 1);
+  const firstScoringReveal = !isPractice && !scoringFinalized;
+  const [retryLeft, setRetryLeft] = React.useState(() => {
+    const deadline = Date.parse(retryDeadline || "");
+    return Number.isFinite(deadline) ? Math.max(0, Math.ceil((deadline - Date.now()) / 1000)) : 0;
+  });
+  const actionRequested = React.useRef(false);
 
   React.useEffect(() => {
     if (!firstScoringReveal) return;
-    const iv = setInterval(() => setRetryLeft(s => (s > 0 ? s - 1 : 0)), 1000);
-    return () => clearInterval(iv);
-  }, [firstScoringReveal]);
+    function updateCountdown() {
+      const deadline = Date.parse(retryDeadline || "");
+      setRetryLeft(Number.isFinite(deadline) ? Math.max(0, Math.ceil((deadline - Date.now()) / 1000)) : 0);
+    }
+    updateCountdown();
+    const timer = setInterval(updateCountdown, 200);
+    return () => clearInterval(timer);
+  }, [firstScoringReveal, retryDeadline]);
 
   React.useEffect(() => {
-    if (!firstScoringReveal || retryLeft !== 0 || retryRequested.current || lockNotified.current) return;
-    lockNotified.current = true;
-    (commitPromise.current || Promise.resolve())
-      .then(() => onRetryExpired && onRetryExpired())
-      .then(() => setShowDetails(true));
-  }, [firstScoringReveal, retryLeft, onRetryExpired]);
+    if (!firstScoringReveal || retryLeft > 0 || actionRequested.current) return;
+    actionRequested.current = true;
+    Promise.resolve(onFinalizeScoring && onFinalizeScoring());
+  }, [firstScoringReveal, retryLeft, onFinalizeScoring]);
 
   async function handleScoringRetry() {
-    if (retryRequested.current) return;
-    retryRequested.current = true;
-    await (commitPromise.current || Promise.resolve());
-    onRetry && onRetry();
+    if (actionRequested.current || retryLeft <= 0) return;
+    actionRequested.current = true;
+    const reserved = await (onRetry && onRetry());
+    if (reserved === false) actionRequested.current = false;
   }
+
   const actualTier = profile.game_metadata?.actual_school_tier;
   const finalDecision = profile.application_results?.final_decision;
 
-  // partition rows into university-section and LAC-section
+  // Partition feedback rows into university and LAC sections. These rows are
+  // rendered only after the lock authorizes the full profile.
   const uniKeys = new Set(uniAvail.all.map(a => a.key));
   const lacKeys = new Set(lacAvail.all.map(a => a.key));
   const uniRows = rows.filter(r => uniKeys.has(r.key));
@@ -303,18 +273,25 @@ function Phase4Results({
         <h2>The verdict</h2>
         <span className="sub">{profile.id}</span>
       </div>
+      {isPractice && (
+        <div className="callout" role="status" style={{ marginBottom: "var(--sp-4)" }}>
+          <i className="ti ti-info-circle" aria-hidden="true" />
+          <div><strong>Practice feedback</strong> · not recorded and does not affect your score.</div>
+        </div>
+      )}
+
 
       {showDetails && <CelebrationBanner score={Math.round(finalScore)} accuracy={accuracy} />}
 
       {/* Score cards */}
       <div className="grid grid-2 stagger" style={{ marginBottom: "var(--sp-5)" }}>
         <div className="card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
-          <div className="label">Case score</div>
+          <div className="label">{isPractice ? "Practice score" : "Case score"}</div>
           <div className="score-pop" style={{ marginTop: "var(--sp-2)", color: "var(--text-primary)" }}>
             <AnimatedNum value={Math.round(finalScore)} format={n => String(Math.round(n))} />
           </div>
           <div className="label" style={{ color: "var(--text-tertiary)", marginTop: "var(--sp-2)" }}>
-            from this profile · out of 100{timeMult < 1 ? " · after time adjustment" : ""}
+            {isPractice ? "feedback only · out of 100" : <>from this profile · out of 100{timeMult < 1 ? " · after time adjustment" : ""}</>}
           </div>
         </div>
         <div className="card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
@@ -326,15 +303,17 @@ function Phase4Results({
             selection overlap with admits in view
           </div>
         </div>
-        <div className="card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
-          <div className="label">Time</div>
-          <div className="score-pop" style={{ marginTop: "var(--sp-2)" }}>
-            {elapsedSeconds == null ? "—" : `${elapsedSeconds}s`}
+        {!isPractice && (
+          <div className="card" style={{ padding: "var(--sp-5) var(--sp-6)" }}>
+            <div className="label">Time</div>
+            <div className="score-pop" style={{ marginTop: "var(--sp-2)" }}>
+              {`${elapsedSeconds}s`}
+            </div>
+            <div className="label" style={{ color: "var(--text-tertiary)", marginTop: "var(--sp-2)" }}>
+              {`Score multiplier ×${timeMult.toFixed(2)}`}
+            </div>
           </div>
-          <div className="label" style={{ color: "var(--text-tertiary)", marginTop: "var(--sp-2)" }}>
-            {elapsedSeconds == null ? "No timed attempt" : `Score multiplier ×${timeMult.toFixed(2)}`}
-          </div>
-        </div>
+        )}
       </div>
 
       {showDetails && <>
@@ -387,8 +366,8 @@ function Phase4Results({
           {noLacClaim && (
             <div className="label" style={{ color: "var(--text-tertiary)", padding: "var(--sp-1) 0 var(--sp-2)" }}>
               {hasLacAdmit
-                ? "Claimed no LAC admit — applicant did have LAC admits"
-                : "Correctly identified no LAC admit"}
+                ? "Claim was incorrect — applicant had a top-20 LAC admit"
+                : "Correctly identified no top-20 LAC admit"}
             </div>
           )}
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: "var(--fs-base)", padding: "var(--sp-1) 0" }}>
@@ -460,12 +439,12 @@ function Phase4Results({
         <div className="date">Admitted on {formatDate(finalDecision?.decision_date)}</div>
       </div>
 
-      {rank && (
+      {!isPractice && rank && (
         <div className="card stagger" style={{ marginTop: "var(--sp-4)" }}>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline", marginBottom: "var(--sp-3)" }}>
-            <div className="label">Session ranking</div>
+            <div className="label">Overall ranking</div>
             <span className="badge badge--neutral" style={{ fontFamily: "var(--font-mono)" }}>
-              <span className="num">{average ?? 0}</span> avg · season average
+              <span className="num">{average ?? 0}</span> avg · current average
             </span>
           </div>
           <RankProgressBar rank={rank} totalPoints={average ?? 0} />

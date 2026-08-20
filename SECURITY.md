@@ -34,7 +34,7 @@ days for a fix before public disclosure; we'll try to be much faster.
 ## Known hardening posture
 
 - Passwords are bcrypt-hashed (`bcryptjs`); sessions use short-lived JWTs.
-- Registration and score inputs are bounded; `/api/scores` accepts only 0–100 integers and rejects permanently practice-locked profiles.
-- Profile-list responses omit outcomes/source and detail responses strip source. `/api/profiles/:id` is public; first-reveal answer concealment is a gameplay UI contract, not an authorization boundary.
-- Reddit submission mutations/callbacks are disabled unless `SUBMISSIONS_ENABLED=true`. Player deployments must keep the flag false; enabled maintainer environments still require consent, ownership proof, rate limiting, and human review.
+- The browser submits predictions, not scores. `public/game-score.js` is loaded by both browser and server; the server evaluates against its private profile record and atomically finalizes score + Practice lock.
+- Profile-list responses omit outcomes/source. `/api/profiles/:id` requires bearer auth and a persisted lock; premature/anonymous requests cannot retrieve admissions outcomes.
+- Reddit submission routes default disabled. Enabled list/create/confirm/delete calls require bearer auth plus a timing-safe `X-Maintainer-Key` match against nonempty `MAINTAINER_API_KEY`; OAuth callback authority is its hashed, single-use state.
 - Unknown `/api/*` paths return JSON 404s. `.env` is gitignored; `.env.example` documents every secret/feature flag. Never deploy with the JWT fallback secret.

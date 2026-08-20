@@ -154,16 +154,20 @@ function computeAvailable(profile, tier, kind) {
   return { all, admitted: admittedSet, hit };
 }
 
-// ─── Phase3School ─────────────────────────────────────────────────────────────
-// Informational per-phase countdown for the time-bonus window.
-// Display only — actual scoring uses the app-level guessStartAt timer.
-function TimeBonusChip() {
-  const [elapsed, setElapsed] = React.useState(0);
+// Informational countdown aligned to the server attempt's authoritative start.
+function TimeBonusChip({ startedAt }) {
+  const startMs = Date.parse(startedAt || "");
+  const [elapsed, setElapsed] = React.useState(() => Number.isFinite(startMs)
+    ? Math.max(0, Math.floor((Date.now() - startMs) / 1000))
+    : 0);
   React.useEffect(() => {
-    const startedAt = Date.now();
-    const id = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    const update = () => setElapsed(Number.isFinite(startMs)
+      ? Math.max(0, Math.floor((Date.now() - startMs) / 1000))
+      : 0);
+    update();
+    const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [startMs]);
   const state = elapsed <= 30 ? "full" : elapsed >= 120 ? "floor" : "shrinking";
   const kind = state === "full" ? "warn" : state === "shrinking" ? "info" : "neutral";
   const fade = state === "full" ? 1 : Math.max(0.55, 1 - 0.45 * (elapsed - 30) / 90);
@@ -176,7 +180,8 @@ function TimeBonusChip() {
 
 function Phase3School({
   profile, universityTierPick, lacTierPick, noUniClaim, noLacClaim,
-  schoolSelections, setSchoolSelections, onReveal, onBack
+  schoolSelections, setSchoolSelections, onReveal, onBack,
+  isPractice = false, attemptStartedAt = null
 }) {
   const uni = useMemo(() => computeAvailable(profile, noUniClaim ? null : universityTierPick, "uni"),
     [profile, universityTierPick, noUniClaim]);
@@ -199,7 +204,7 @@ function Phase3School({
       <div className="section-head">
         <h2>Which ones did they get in?</h2>
         <span className="sub">Tap the schools you think were admits.</span>
-        <TimeBonusChip />
+        {!isPractice && <TimeBonusChip startedAt={attemptStartedAt} />}
       </div>
 
       <div className="row" style={{ flexWrap: "wrap", gap: "var(--sp-3)", marginBottom: "var(--sp-4)" }}>

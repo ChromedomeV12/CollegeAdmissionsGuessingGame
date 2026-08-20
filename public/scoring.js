@@ -1,8 +1,9 @@
 // Scoring engine for the Reddit Uni Admission Game.
-// Plain (non-module) browser script: attaches a pure API to window.SCORING.
+// Plain (non-module) script: attaches a pure API to window or globalThis.
 // No DOM access, no window.TIERS dependency — callers pass indices and sets.
 
-window.SCORING = (function () {
+const SCORING_ROOT = typeof window !== "undefined" ? window : globalThis;
+SCORING_ROOT.SCORING = (function () {
   "use strict";
 
   // Jaccard similarity over two iterables of keys. Returns 0 when the union
@@ -22,6 +23,7 @@ window.SCORING = (function () {
   // University/LAC tier points by absolute index difference.
   // diff 0 -> 15, diff 1 -> 9, diff 2 -> 5, else 0.
   function tierPoints(pickIndex, actualIndex) {
+    if (!Number.isInteger(pickIndex) || !Number.isInteger(actualIndex) || actualIndex < 0) return 0;
     const diff = Math.abs(pickIndex - actualIndex);
     if (diff === 0) return 15;
     if (diff === 1) return 9;

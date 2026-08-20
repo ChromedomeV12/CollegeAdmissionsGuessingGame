@@ -33,12 +33,14 @@ With default `SUBMISSIONS_ENABLED=false`:
 - authenticated `GET /api/submissions` and mutation routes return HTTP 503 `Submission tools are disabled`;
 - the player UI contains no Submission Center or Submit-a-post navigation.
 
-### 1.4 Lock protection
+### 1.4 Authoritative attempt and lock protection
 
-After `POST /api/locks` with a profile ID:
-
-- `GET /api/locks` includes that ID;
-- `POST /api/scores` for that ID returns HTTP 409 `Profile locked — practice only`.
+- `POST /api/attempts/start` accepts only a real, unlocked profile.
+- First `/reveal` returns `finalized:false`, an aggregate-only eight-field result, and a five-second deadline; no score/lock exists yet.
+- `/retry` reserves exactly one retry; its `/reveal` atomically stores that exact score even when lower.
+- `/finalize` after expiry and `/abandon` after first reveal atomically persist the first result and lock; pre-reveal abandon deletes the attempt without score/lock.
+- `GET /api/profiles/:id` returns 401/403 before lock and the source-stripped full profile after lock.
+- Removed `POST /api/scores` and `POST /api/locks` paths return 404 JSON.
 
 ## 2. Auth and signed-in Home
 
@@ -81,7 +83,7 @@ After `POST /api/locks` with a profile ID:
 4. Return with the topbar Menu control; wait for `00 Menu`.
 5. **PASS:** the finalized card shows `Practice`; `.check.is-complete` uses Tokyo green `#587539` (computed `rgb(88, 117, 57)`).
 
-Also exercise the timeout branch once: do not click Retry. After five seconds the first attempt must finalize and reveal detail; no later Retry action may appear.
+Also exercise the timeout and recovery branches: let one first reveal expire; reload another during the window; abandon a pre-reveal attempt with Escape. Expiry/reload must finalize exactly once with a permanent lock, while pre-reveal Escape must leave no score or lock.
 
 ## 4. Permanent practice and Correct choices
 
@@ -96,8 +98,8 @@ Also exercise the timeout branch once: do not click Retry. After five seconds th
 - Verify school selection uses rounded 70-point Jaccard overlap over visible schools.
 - Verify University and LAC distance ladders return 15/9/5/0 for distance 0/1/2/other.
 - Verify a lower predicted band still receives distance credit when the applicant's best admit is higher; it is not forced to zero merely because that admit was not the best one.
-- Verify each no-admit claim returns 15 only when its category has no configured admit, otherwise 0.
-- Verify every composed case score is an integer from 0 through 100.
+- Verify normal tier picks against no configured admit return 0, while each explicit no-admit claim returns 15 only when true.
+- Verify shared `GAME_SCORE` rejects invalid tiers, duplicate/out-of-view selections, and invalid timestamps; every composed score is an integer 0–100.
 
 ## 6. Global leaderboard and rivals
 
@@ -127,7 +129,7 @@ Run:
 npm test
 ```
 
-**PASS:** unit tests finish with zero failures; e2e logs Home/theme persistence, five aggregate-only first reveals, five finalized retries, permanent practice/Correct choices, global rivalry UI with no seasons, valid leaderboard API data, and `ALL STEPS PASSED`.
+**PASS:** unit tests finish with zero failures; e2e proves anonymous/premature answer denial, failed-write safety, Escape/reload recovery, five aggregate-only first reveals, timeout, exact lower retry replacement, persisted Practice/Correct choices, immutable Practice scores, real rival/duel shared rows, no seasons, valid leaderboard data, and `ALL STEPS PASSED`.
 
 ## Results report
 

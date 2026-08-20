@@ -1,5 +1,7 @@
 // Tier lookup tables + name normalization
 
+(function (root) {
+
 const UNI_TIER_LIST = ["HYPSM", "T10", "T15", "T20", "T30", "T50"];
 const LAC_TIER_LIST = ["T5 LAC", "T10 LAC", "T20 LAC"];
 
@@ -135,36 +137,48 @@ function schoolKind(schoolName) {
   return null;
 }
 
-// Build the "admit set" — every school the applicant got into.
-// Includes accepted[] and waitlisted[] entries whose decision_type contains "Accepted".
+// Includes accepted[] entries, waitlisted[] entries marked "Accepted", and
+// final_decision.school; duplicate normalized names are emitted once.
 function getAdmittedSchools(profile) {
-  const r = profile.application_results || {};
+  const r = profile && profile.application_results || {};
   const admits = [];
-  for (const s of r.accepted || []) admits.push(s.school);
-  for (const s of r.waitlisted || []) {
-    if (s.decision_type && s.decision_type.includes("Accepted")) admits.push(s.school);
+  const seen = new Set();
+  const add = (school) => {
+    if (!school) return;
+    const key = normSchool(school);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    admits.push(school);
+  };
+  for (const s of Array.isArray(r.accepted) ? r.accepted : []) if (s && s.school) add(s.school);
+  for (const s of Array.isArray(r.waitlisted) ? r.waitlisted : []) {
+    if (s && s.school && typeof s.decision_type === "string" && s.decision_type.includes("Accepted")) add(s.school);
   }
+  if (r.final_decision && r.final_decision.school) add(r.final_decision.school);
   return admits;
 }
 
 // Every school the applicant *applied* to (any decision).
 function getAppliedSchools(profile) {
-  const r = profile.application_results || {};
-  const applied = new Map(); // normName -> displayName
+  const r = profile && profile.application_results || {};
+  const applied = new Map();
   const push = (s) => {
-    const k = normSchool(s.school);
-    if (!applied.has(k)) applied.set(k, s.school);
+    if (!s || !s.school) return;
+    const key = normSchool(s.school);
+    if (key && !applied.has(key)) applied.set(key, String(s.school));
   };
-  for (const s of r.accepted || [])   push(s);
-  for (const s of r.rejected || [])   push(s);
-  for (const s of r.waitlisted || []) push(s);
-  return [...applied.entries()].map(([k, name]) => ({ key: k, name }));
+  for (const s of Array.isArray(r.accepted) ? r.accepted : []) push(s);
+  for (const s of Array.isArray(r.rejected) ? r.rejected : []) push(s);
+  for (const s of Array.isArray(r.waitlisted) ? r.waitlisted : []) push(s);
+  return [...applied.entries()].map(([key, name]) => ({ key, name }));
 }
 
-window.TIERS = {
-  UNI_TIER_LIST, LAC_TIER_LIST, TIER_RANGE,
-  UNI_CUMULATIVE, LAC_CUMULATIVE,
-  normSchool, schoolInTier, schoolKind,
-  getAdmittedSchools, getAppliedSchools,
-  getSchoolsInTier
-};
+  root.TIERS = {
+    UNI_TIER_LIST, LAC_TIER_LIST, TIER_RANGE,
+    UNI_CUMULATIVE, LAC_CUMULATIVE,
+    normSchool, schoolInTier, schoolKind,
+    getAdmittedSchools, getAppliedSchools,
+    getSchoolsInTier,
+    ALL_UNI_SET, ALL_LAC_SET,
+  };
+})(typeof window !== "undefined" ? window : globalThis);

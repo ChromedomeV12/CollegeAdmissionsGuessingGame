@@ -11,8 +11,6 @@
     { "fg": "#ffffff", "bg": "#ce3b27", "role": "body", "fg_name": "stamp text", "bg_name": "decision signal" },
     { "fg": "#ffffff", "bg": "#10243e", "role": "body", "fg_name": "inverse text", "bg_name": "ink panel" },
     { "fg": "#9fb0c2", "bg": "#10243e", "role": "body", "fg_name": "library stat label", "bg_name": "ink panel" },
-    { "fg": "#c7d4e2", "bg": "#10243e", "role": "body", "fg_name": "submission hero copy", "bg_name": "ink panel" },
-    { "fg": "#9bb0c5", "bg": "#10243e", "role": "body", "fg_name": "proof step detail", "bg_name": "ink panel" },
     { "fg": "#b9cadd", "bg": "#10243e", "role": "body", "fg_name": "authentication intro copy", "bg_name": "ink panel" },
     { "fg": "#075a8a", "bg": "#e1f1fb", "role": "body", "fg_name": "information text", "bg_name": "information surface" },
     { "fg": "#0a6848", "bg": "#e0f4ea", "role": "body", "fg_name": "success text", "bg_name": "success surface" },

@@ -2,6 +2,16 @@
 
 All notable changes to this project. Dates are YYYY-MM-DD.
 
+## 2026-08-20 — Authoritative retry finalization and answer security
+
+- Replaced client-submitted scores with durable server attempts. The server validates prediction inputs, computes scores from private profiles through shared `game-score.js`, stores the pending first result, and atomically writes the exact final score plus permanent Practice lock.
+- The first score is not published during the five-second retry window. Retry reservations cancel first-result finalization; the exact second result wins even when lower. Timeout, navigation, reload, tab close, and logout recover or finalize attempts without granting extra scoring rounds.
+- Full `/api/profiles/:id` outcomes now require bearer auth and a persisted lock. Anonymous and authenticated-premature requests are denied; phases before finalization use outcome-free list records.
+- Normal tier guesses against a category with no configured admit now score zero. Explicit no-T50-University/no-T20-LAC claims remain the only correct no-admit path.
+- Practice results are explicitly unrecorded and omit time, ranking, and contribution claims. Correct choices remains available only after durable finalization.
+- Enabled consent-import routes now require both bearer auth and timing-safe `X-Maintainer-Key` validation; the OAuth callback remains bound to its hashed single-use state.
+- Added coverage for failed reveal writes, expiry, reload, Escape abandon, lower retry replacement, lock/detail persistence, Practice immutability, real rival/duel rows, and no-season result copy. Removed dead submission CSS and completed keyboard/ARIA tab behavior.
+
 ## 2026-08-19 — Feedback pass: fair retries, practice locks, Home, and global rivals
 
 - **Fair reveal/retry contract.** A first scoring reveal now exposes only Case score, Accuracy, and Time plus a five-second `Retry case` action. Tier hits, school outcomes, final decision, and explanatory details stay hidden until the retry is used or expires. A retry finalizes the second attempt; timeout finalizes the first.

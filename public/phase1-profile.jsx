@@ -26,6 +26,7 @@ function Phase1Profile({ profile, onStart, profileIdx, profileCount, canViewCorr
 
         <div style={{ padding: "0 var(--sp-5)" }}>
           <Tabs
+            idBase="phase1"
             active={tab}
             onChange={setTab}
             tabs={[
@@ -37,7 +38,13 @@ function Phase1Profile({ profile, onStart, profileIdx, profileCount, canViewCorr
           />
         </div>
 
-        <div style={{ padding: "var(--sp-4) var(--sp-5)" }}>
+        <div
+          role="tabpanel"
+          id={`phase1-panel-${tab}`}
+          aria-labelledby={`phase1-tab-${tab}`}
+          tabIndex={0}
+          style={{ padding: "var(--sp-4) var(--sp-5)" }}
+        >
           {tab === "overview" && <OverviewTab d={d} />}
           {tab === "academics" && (
             <AcademicsTab

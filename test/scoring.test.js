@@ -1,6 +1,6 @@
-// test/scoring.test.js — verifies the pure scoring engine in public/scoring.js.
-// Loads the plain browser script in a vm sandbox (window.SCORING assignment)
-// without a DOM, mirroring how the script runs in the browser.
+// Verifies the pure scoring engine and shared authoritative evaluator.
+// Loads the classic browser scripts in VM sandboxes with and without window.
+// No DOM is required.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -10,20 +10,17 @@ import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const scoringSrc = fs.readFileSync(
-  path.join(__dirname, "..", "public", "scoring.js"),
-  "utf8"
-);
+const scriptNames = ["tiers.js", "scoring.js", "game-score.js"];
+const scriptSources = scriptNames.map((name) => fs.readFileSync(path.join(__dirname, "..", "public", name), "utf8"));
 
-// Replicate the repo's vm-sandbox pattern: the script assigns onto window, so
-// we hand it a sandbox whose `window` is itself (the script does window.SCORING = …).
 const sandbox = {};
 sandbox.window = sandbox;
-
 vm.createContext(sandbox);
-vm.runInNewContext(scoringSrc, sandbox);
+for (const source of scriptSources) vm.runInContext(source, sandbox);
 
-const SCORING = sandbox.window.SCORING;
+const SCORING = sandbox.SCORING;
+const GAME_SCORE = sandbox.GAME_SCORE;
+const TIERS = sandbox.TIERS;
 
 test("SCORING is exposed on the sandbox window", () => {
   assert.equal(typeof SCORING, "object");
@@ -65,6 +62,7 @@ test("tierPoints returns 15/9/5/0 by absolute index distance", () => {
   assert.equal(SCORING.tierPoints(0, 3), 0);
   assert.equal(SCORING.tierPoints(5, 0), 0);
   assert.equal(SCORING.tierPoints(3, 7), 0);
+  assert.equal(SCORING.tierPoints(0, -1), 0);
 });
 
 test("caseScore perfect case = 100 (correct uni, correct no-Lac claim, perfect selection)", () => {
@@ -284,4 +282,100 @@ test("applyTimeFactor result is always an integer in 0..100", () => {
       );
     }
   }
+});
+
+test("classic scripts expose globals without window", () => {
+  const nodeSandbox = {};
+  vm.createContext(nodeSandbox);
+  for (const source of scriptSources) vm.runInContext(source, nodeSandbox);
+  assert.equal(typeof nodeSandbox.TIERS, "object");
+  assert.equal(typeof nodeSandbox.SCORING, "object");
+  assert.equal(typeof nodeSandbox.GAME_SCORE.evaluate, "function");
+});
+
+function profileWithAdmits(...schools) {
+  return {
+    id: "fixture",
+    application_results: {
+      accepted: schools.map((school) => ({ school })),
+      rejected: [],
+      waitlisted: [],
+    },
+  };
+}
+test("admitted schools include and deduplicate the final decision school", () => {
+  const profile = {
+    ...profileWithAdmits("Harvard"),
+    application_results: {
+      ...profileWithAdmits("Harvard").application_results,
+      final_decision: { school: "Harvard" },
+    },
+  };
+  assert.deepEqual(JSON.parse(JSON.stringify(TIERS.getAdmittedSchools(profile))), ["Harvard"]);
+
+  const withEnrollment = {
+    ...profile,
+    application_results: {
+      ...profile.application_results,
+      final_decision: { school: "Yale" },
+    },
+  };
+  assert.deepEqual(JSON.parse(JSON.stringify(TIERS.getAdmittedSchools(withEnrollment))), ["Harvard", "Yale"]);
+});
+
+function prediction(overrides = {}) {
+  return {
+    universityTierPick: "HYPSM",
+    lacTierPick: "T5 LAC",
+    noUniClaim: false,
+    noLacClaim: false,
+    schoolSelections: [],
+    ...overrides,
+  };
+}
+
+test("normal tier picks earn zero when no university or LAC admit exists", () => {
+  const result = GAME_SCORE.evaluate(
+    profileWithAdmits("Purdue"),
+    prediction(),
+    "2026-01-01T00:00:00.000Z",
+    "2026-01-01T00:00:30.000Z",
+  );
+  assert.equal(result.uniPts, 0);
+  assert.equal(result.lacPts, 0);
+  assert.equal(result.rawScore, 0);
+});
+
+test("shared evaluator rejects selections outside the chosen visible bands", () => {
+  assert.throws(
+    () => GAME_SCORE.evaluate(
+      profileWithAdmits("Harvard"),
+      prediction({ schoolSelections: ["duke"] }),
+      "2026-01-01T00:00:00.000Z",
+      "2026-01-01T00:00:01.000Z",
+    ),
+    /not visible/,
+  );
+});
+
+test("shared evaluator validates exact choice combinations and duplicate keys", () => {
+  const profile = profileWithAdmits("Harvard");
+  const start = "2026-01-01T00:00:00.000Z";
+  const end = "2026-01-01T00:00:01.000Z";
+  assert.throws(() => GAME_SCORE.evaluate(profile, prediction({ noUniClaim: true }), start, end), /university/);
+  assert.throws(() => GAME_SCORE.evaluate(profile, prediction({ universityTierPick: "T100" }), start, end), /university/);
+  assert.throws(() => GAME_SCORE.evaluate(profile, prediction({ schoolSelections: ["harvard", "harvard"] }), start, end), /Duplicate/);
+});
+
+test("shared evaluator uses exact 30/120 second time boundaries", () => {
+  const profile = profileWithAdmits("Harvard", "Williams");
+  const pick = prediction({ schoolSelections: ["harvard", "williams"] });
+  const start = "2026-01-01T00:00:00.000Z";
+  const at30 = GAME_SCORE.evaluate(profile, pick, start, "2026-01-01T00:00:30.000Z");
+  const at31 = GAME_SCORE.evaluate(profile, pick, start, "2026-01-01T00:00:31.000Z");
+  const at120 = GAME_SCORE.evaluate(profile, pick, start, "2026-01-01T00:02:00.000Z");
+  assert.equal(at30.score, 100);
+  assert.ok(at31.timeFactor < at30.timeFactor);
+  assert.equal(at120.score, 70);
+  assert.deepEqual(Object.keys(at30).sort(), ["accuracy", "lacPts", "rawScore", "score", "selectionPts", "timeFactor", "timeSeconds", "uniPts"].sort());
 });

@@ -1,3 +1,4 @@
+import vm from "vm";
 import express from "express";
 import fs from "fs";
 import path from "path";
@@ -25,6 +26,16 @@ const REDDIT_CLIENT_ID = process.env.REDDIT_CLIENT_ID || "";
 const REDDIT_CLIENT_SECRET = process.env.REDDIT_CLIENT_SECRET || "";
 const REDDIT_REDIRECT_URI = process.env.REDDIT_REDIRECT_URI || "";
 const REDDIT_USER_AGENT = process.env.REDDIT_USER_AGENT || "web:AdmissionsOracle:1.0 (by /u/MJanW)";
+const MAINTAINER_API_KEY = process.env.MAINTAINER_API_KEY || "";
+const RETRY_WINDOW_MS = 5_000;
+const RECOVERY_WINDOW_MS = 5 * 60_000;
+const attemptTimers = new Map();
+const safeEqual = (a, b) => {
+  if (typeof a !== "string" || typeof b !== "string" || !a || !b) return false;
+  const aa = Buffer.from(a); const bb = Buffer.from(b);
+  return aa.length === bb.length && crypto.timingSafeEqual(aa, bb);
+};
+
 const SUBMISSIONS_ENABLED = process.env.SUBMISSIONS_ENABLED === "true";
 const CONSENT_VERSION = "2026-08-17";
 const OAUTH_STATE_TTL_MS = 15 * 60 * 1000;
@@ -41,7 +52,7 @@ if (!redditOAuthConfigured) {
 app.use(bodyParser.json());
 app.use(express.static("public"));
 
-const dataDir = "data";
+const dataDir = process.env.DATA_DIR || "data";
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
@@ -117,6 +128,24 @@ db.exec(`
     PRIMARY KEY (user_id, rival_username),
     FOREIGN KEY (user_id) REFERENCES users (id)
   );
+  CREATE TABLE IF NOT EXISTS game_attempts (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    profile_id TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('guessing','retry_pending','retrying','finalized')),
+    started_at TEXT NOT NULL,
+    retry_deadline TEXT,
+    recovery_deadline TEXT,
+    retry_started_at TEXT,
+    first_result TEXT,
+    first_prediction TEXT,
+    finalized_result TEXT,
+    finalized_at TEXT,
+    FOREIGN KEY (user_id) REFERENCES users (id)
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_game_attempts_active_profile
+    ON game_attempts(user_id, profile_id) WHERE state <> 'finalized';
+  CREATE INDEX IF NOT EXISTS idx_game_attempts_user_profile ON game_attempts(user_id, profile_id);
 
 `);
 
@@ -131,17 +160,32 @@ db.exec(`
   }
 }
 
+{
+  const cols = db.prepare("PRAGMA table_info(game_attempts)").all().map((column) => column.name);
+  if (!cols.includes("retry_started_at")) db.exec("ALTER TABLE game_attempts ADD COLUMN retry_started_at TEXT");
+  if (!cols.includes("recovery_deadline")) db.exec("ALTER TABLE game_attempts ADD COLUMN recovery_deadline TEXT");
+  const retrying = db.prepare("SELECT id, retry_started_at FROM game_attempts WHERE state='retrying' AND recovery_deadline IS NULL").all();
+  const setRecoveryDeadline = db.prepare("UPDATE game_attempts SET recovery_deadline=? WHERE id=? AND state='retrying' AND recovery_deadline IS NULL");
+  for (const row of retrying) {
+    const startedMs = Date.parse(row.retry_started_at || "");
+    const deadline = new Date((Number.isFinite(startedMs) ? startedMs : Date.now()) + RECOVERY_WINDOW_MS).toISOString();
+    setRecoveryDeadline.run(deadline, row.id);
+  }
+}
+
 // ─── Schema Migration: scoring version reset ──────────────────────────────────
-const SCORING_VERSION = "2";
+const SCORING_VERSION = "3";
 {
   const row = db.prepare("SELECT value FROM meta WHERE key = 'scoring_version'").get();
   if (!row || row.value !== SCORING_VERSION) {
     console.log(`Resetting scores for scoring version ${SCORING_VERSION} (was ${row ? row.value : "none"})...`);
-    db.exec("DELETE FROM scores");
-    db.prepare(`
-      INSERT INTO meta (key, value) VALUES ('scoring_version', ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    `).run(SCORING_VERSION);
+    db.transaction(() => {
+      db.exec("DELETE FROM scores; DELETE FROM game_attempts; DELETE FROM profile_locks");
+      db.prepare(`
+        INSERT INTO meta (key, value) VALUES ('scoring_version', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(SCORING_VERSION);
+    })();
   }
 }
 
@@ -162,8 +206,16 @@ function loadProfiles() {
         return null;
       }
     })
-    .filter(Boolean);
+    .filter((profile) => profile && typeof profile === "object" && !Array.isArray(profile)
+      && typeof profile.id === "string" && profile.id.length > 0 && profile.id.length <= 64);
 }
+
+for (const script of ["tiers.js", "scoring.js", "game-score.js"]) {
+  const source = fs.readFileSync(path.join("public", script), "utf8");
+  vm.runInThisContext(source, { filename: path.join("public", script) });
+}
+const GAME_SCORE = globalThis.GAME_SCORE;
+if (!GAME_SCORE || !globalThis.TIERS || !globalThis.SCORING) throw new Error("Shared scoring scripts failed to load");
 
 let profiles = loadProfiles();
 
@@ -188,6 +240,14 @@ function requireSubmissionsEnabled(req, res, next) {
   }
   next();
 }
+
+function requireMaintainerKey(req, res, next) {
+  if (!safeEqual(req.get("X-Maintainer-Key") || "", MAINTAINER_API_KEY)) {
+    return res.status(403).json({ error: "Maintainer key required" });
+  }
+  next();
+}
+
 
 function submissionForClient(row) {
   const client = {
@@ -263,8 +323,8 @@ async function registerHandler(req, res) {
     const hash = await bcrypt.hash(password, 10);
     const stmt = db.prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)");
     const info = stmt.run(username, hash);
-    
-    const token = jwt.sign({ id: info.lastInsertRowid, username }, JWT_SECRET);
+
+    const token = jwt.sign({ id: info.lastInsertRowid, username }, JWT_SECRET, { expiresIn: "7d" });
     res.json({ success: true, username, token, scores: {} });
   } catch (err) {
     if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
@@ -292,13 +352,14 @@ async function loginHandler(req, res) {
       return res.status(401).json({ error: "Invalid username or password" });
     }
 
+    recoverExpiredAttempts();
     const userScores = db.prepare("SELECT profile_id, score FROM scores WHERE user_id = ?").all(user.id);
     const scoresDict = {};
     for (const row of userScores) {
       scoresDict[row.profile_id] = row.score;
     }
 
-    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET);
+    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: "7d" });
     res.json({ success: true, username: user.username, token, scores: scoresDict });
   } catch (err) {
     console.error(err);
@@ -311,6 +372,7 @@ app.post("/api/login", loginHandler);
 
 app.get("/api/me", authenticateToken, (req, res) => {
   try {
+    recoverExpiredAttempts();
     const userScores = db.prepare("SELECT profile_id, score FROM scores WHERE user_id = ?").all(req.user.id);
     const scoresDict = {};
     for (const row of userScores) {
@@ -335,7 +397,7 @@ app.get("/api/submissions/config", authenticateToken, (req, res) => {
   });
 });
 
-app.get("/api/submissions", requireSubmissionsEnabled, authenticateToken, (req, res) => {
+app.get("/api/submissions", requireSubmissionsEnabled, requireMaintainerKey, authenticateToken, (req, res) => {
   try {
     const rows = db.prepare(`
       SELECT * FROM reddit_submissions
@@ -350,7 +412,7 @@ app.get("/api/submissions", requireSubmissionsEnabled, authenticateToken, (req, 
   }
 });
 
-app.post("/api/submissions", requireSubmissionsEnabled, authenticateToken, submissionRateLimit, (req, res) => {
+app.post("/api/submissions", requireSubmissionsEnabled, requireMaintainerKey, authenticateToken, submissionRateLimit, (req, res) => {
   if (!redditOAuthConfigured && !FALLBACK_VERIFICATION_ENABLED) {
     return res.status(503).json({ error: "Reddit ownership verification is not configured yet" });
   }
@@ -489,7 +551,7 @@ app.post("/api/submissions", requireSubmissionsEnabled, authenticateToken, submi
   }
 });
 
-app.post("/api/submissions/:id/confirm-fallback", requireSubmissionsEnabled, authenticateToken, async (req, res) => {
+app.post("/api/submissions/:id/confirm-fallback", requireSubmissionsEnabled, requireMaintainerKey, authenticateToken, async (req, res) => {
   try {
     const row = db.prepare("SELECT * FROM reddit_submissions WHERE id = ? AND user_id = ?").get(req.params.id, req.user.id);
     if (!row) return res.status(404).json({ error: "Submission not found" });
@@ -638,7 +700,7 @@ app.get("/api/submissions/reddit/callback", requireSubmissionsEnabled, async (re
   }
 });
 
-app.delete("/api/submissions/:id", requireSubmissionsEnabled, authenticateToken, (req, res) => {
+app.delete("/api/submissions/:id", requireSubmissionsEnabled, requireMaintainerKey, authenticateToken, (req, res) => {
   try {
     const row = db.prepare("SELECT * FROM reddit_submissions WHERE id = ? AND user_id = ?").get(req.params.id, req.user.id);
     if (!row) return res.status(404).json({ error: "Submission not found" });
@@ -661,107 +723,286 @@ app.delete("/api/submissions/:id", requireSubmissionsEnabled, authenticateToken,
 
 // ─── API Endpoints: Game ──────────────────────────────────────────────────────
 
+function realProfile(profileId) {
+  if (typeof profileId !== "string" || profileId.length === 0 || profileId.length > 64) return null;
+  profiles = loadProfiles();
+  return profiles.find((profile) => profile && profile.id === profileId) || null;
+}
+
+function profileIsLocked(userId, profileId) {
+  return Boolean(db.prepare("SELECT 1 FROM profile_locks WHERE user_id = ? AND profile_id = ?").get(userId, profileId));
+}
+
+
+function finalizeAttemptTx(attempt, resultJson, nowIso, expectedStates) {
+  const states = Array.isArray(expectedStates) ? expectedStates : [expectedStates];
+  const placeholders = states.map(() => "?").join(",");
+  let committed = false;
+  try {
+    db.transaction(() => {
+      const parsed = JSON.parse(resultJson);
+      const changed = db.prepare(`
+        UPDATE game_attempts
+        SET state='finalized', finalized_result=?, finalized_at=?,
+            retry_deadline=NULL, recovery_deadline=NULL
+        WHERE id=? AND state IN (${placeholders})
+      `).run(resultJson, nowIso, attempt.id, ...states);
+      if (!changed.changes) {
+        const error = new Error("Attempt finalization lost CAS");
+        error.code = "ATTEMPT_CAS_CONFLICT";
+        throw error;
+      }
+
+      const lock = db.prepare(`
+        INSERT OR IGNORE INTO profile_locks (user_id, profile_id, locked_at)
+        VALUES (?, ?, ?)
+      `).run(attempt.user_id, attempt.profile_id, nowIso);
+      if (!lock.changes) {
+        const error = new Error("Profile lock already owned");
+        error.code = "ATTEMPT_CAS_CONFLICT";
+        throw error;
+      }
+
+      db.prepare(`
+        INSERT INTO scores (user_id, profile_id, score, breakdown)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id, profile_id) DO UPDATE SET score=excluded.score, breakdown=excluded.breakdown
+      `).run(attempt.user_id, attempt.profile_id, parsed.score, resultJson);
+      committed = true;
+    })();
+  } catch (err) {
+    if (err?.code !== "ATTEMPT_CAS_CONFLICT") throw err;
+  }
+  if (committed) {
+    clearTimeout(attemptTimers.get(attempt.id));
+    attemptTimers.delete(attempt.id);
+  }
+  return committed;
+}
+
+function recoverExpiredAttempts() {
+  const now = Date.now();
+  const rows = db.prepare(`
+    SELECT * FROM game_attempts
+    WHERE (state='retry_pending' AND retry_deadline IS NOT NULL)
+       OR (state='retrying' AND recovery_deadline IS NOT NULL)
+  `).all();
+  for (const row of rows) {
+    const deadline = row.state === "retrying" ? row.recovery_deadline : row.retry_deadline;
+    if (!row.first_result || !deadline || Date.parse(deadline) > now) continue;
+    try {
+      finalizeAttemptTx(row, row.first_result, new Date().toISOString(), [row.state]);
+    } catch (err) {
+      console.error("Attempt recovery failed:", err);
+    }
+  }
+}
+
+function scheduleAttemptRecovery(id, state, deadline) {
+  clearTimeout(attemptTimers.get(id));
+  const delay = Math.max(0, Date.parse(deadline) - Date.now());
+  const timer = setTimeout(() => {
+    const row = db.prepare("SELECT * FROM game_attempts WHERE id=?").get(id);
+    const currentDeadline = row?.state === "retrying" ? row.recovery_deadline : row?.retry_deadline;
+    if (row && row.state === state && currentDeadline && Date.parse(currentDeadline) <= Date.now() && row.first_result) {
+      try { finalizeAttemptTx(row, row.first_result, new Date().toISOString(), [state]); }
+      catch (err) { console.error("Attempt timer finalization failed:", err); }
+    }
+    attemptTimers.delete(id);
+  }, delay);
+  attemptTimers.set(id, timer);
+}
+
+recoverExpiredAttempts();
+for (const row of db.prepare(`
+  SELECT id,state,retry_deadline,recovery_deadline FROM game_attempts
+  WHERE (state='retry_pending' AND retry_deadline IS NOT NULL)
+     OR (state='retrying' AND recovery_deadline IS NOT NULL)
+`).all()) {
+  scheduleAttemptRecovery(row.id, row.state, row.state === "retrying" ? row.recovery_deadline : row.retry_deadline);
+}
+
+function attemptForUser(id, userId) {
+  return db.prepare("SELECT * FROM game_attempts WHERE id=? AND user_id=?").get(id, userId);
+}
+
+function parsePrediction(body) {
+  return {
+    universityTierPick: body?.universityTierPick ?? null,
+    lacTierPick: body?.lacTierPick ?? null,
+    noUniClaim: body?.noUniClaim,
+    noLacClaim: body?.noLacClaim,
+    schoolSelections: body?.schoolSelections,
+  };
+}
+
 app.get("/api/profiles", (req, res) => {
   profiles = loadProfiles();
-  const stripped = profiles.map(p => {
-    const { application_results, source, ...rest } = p;
-    return rest;
-  });
-  res.json(stripped);
+  res.json(profiles.map(({ application_results, source, game_metadata, ...rest }) => rest));
 });
 
-app.get("/api/profiles/:id", (req, res) => {
-  const profile = profiles.find(p => p.id === req.params.id);
+app.get("/api/profiles/:id", authenticateToken, (req, res) => {
+  recoverExpiredAttempts();
+  const profile = realProfile(req.params.id);
   if (!profile) return res.status(404).json({ error: "Profile not found" });
+  if (!profileIsLocked(req.user.id, profile.id)) return res.status(403).json({ error: "Profile is not finalized" });
   const { source, ...publicProfile } = profile;
   res.json(publicProfile);
 });
 
-app.post("/api/scores", authenticateToken, (req, res) => {
-  const { profileId, score, breakdown } = req.body;
-  if (typeof profileId !== 'string' || profileId.length === 0 || profileId.length > 64) {
-    return res.status(400).json({ error: "profile_id must be a non-empty string up to 64 characters" });
-  }
-  if (!Number.isInteger(score) || score < 0 || score > 100) {
-    return res.status(400).json({ error: "score must be an integer between 0 and 100" });
-  }
-
+app.post("/api/attempts/start", authenticateToken, (req, res) => {
+  recoverExpiredAttempts();
+  const profile = realProfile(req.body?.profileId);
+  if (!profile) return res.status(400).json({ error: "Invalid profile" });
+  const attemptId = crypto.randomUUID();
+  const startedAt = new Date().toISOString();
   try {
-    // Profile lock: practice-only profiles may not record scores
-    const locked = db.prepare("SELECT 1 FROM profile_locks WHERE user_id = ? AND profile_id = ?").get(req.user.id, profileId);
-    if (locked) {
-      return res.status(409).json({ error: "Profile locked — practice only" });
-    }
-
-    // Keep the highest score for each user/profile pair
-    const current = db.prepare("SELECT score FROM scores WHERE user_id = ? AND profile_id = ?").get(req.user.id, profileId);
-    const shouldUpdate = !current || score > current.score;
-
-    if (shouldUpdate) {
-      db.prepare(`
-        INSERT INTO scores (user_id, profile_id, score, breakdown)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(user_id, profile_id) DO UPDATE SET
-        score=excluded.score, breakdown=excluded.breakdown
-      `).run(req.user.id, profileId, score, breakdown ? JSON.stringify(breakdown) : null);
-    }
-    res.json({ success: true });
+    const outcome = db.transaction(() => {
+      if (db.prepare("SELECT 1 FROM profile_locks WHERE user_id=? AND profile_id=?").get(req.user.id, profile.id)) {
+        return { locked: true };
+      }
+      const active = db.prepare("SELECT id FROM game_attempts WHERE user_id=? AND profile_id=? AND state <> 'finalized'").get(req.user.id, profile.id);
+      if (active) return { active };
+      db.prepare("INSERT INTO game_attempts (id,user_id,profile_id,state,started_at) VALUES (?,?,?,?,?)").run(attemptId, req.user.id, profile.id, "guessing", startedAt);
+      return null;
+    })();
+    if (outcome?.locked) return res.status(409).json({ error: "Profile locked — practice only" });
+    if (outcome?.active) return res.status(409).json({ error: "Attempt already in progress", attemptId: outcome.active.id });
+    return res.status(201).json({ attemptId, startedAt });
   } catch (err) {
+    if (err?.code === "SQLITE_CONSTRAINT_UNIQUE") return res.status(409).json({ error: "Attempt already in progress" });
     console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Could not start attempt" });
+  }
+});
+
+app.post("/api/attempts/:id/reveal", authenticateToken, (req, res) => {
+  recoverExpiredAttempts();
+  const attempt = attemptForUser(req.params.id, req.user.id);
+  if (!attempt) return res.status(404).json({ error: "Attempt not found" });
+  if (attempt.state === "finalized") return res.json({ finalized: true, result: JSON.parse(attempt.finalized_result), locked: true });
+  const profile = realProfile(attempt.profile_id);
+  try {
+    const prediction = parsePrediction(req.body);
+    const startedAt = attempt.state === "retrying" ? attempt.retry_started_at : attempt.started_at;
+    const result = GAME_SCORE.evaluate(profile, prediction, startedAt, new Date().toISOString());
+    const resultJson = JSON.stringify(result);
+    if (attempt.state === "guessing") {
+      const deadline = new Date(Date.now() + RETRY_WINDOW_MS).toISOString();
+      const changed = db.transaction(() => db.prepare(`
+        UPDATE game_attempts
+        SET state='retry_pending', retry_deadline=?, recovery_deadline=NULL, first_result=?, first_prediction=?
+        WHERE id=? AND state='guessing'
+      `).run(deadline, resultJson, JSON.stringify(prediction), attempt.id))();
+      if (!changed.changes) return res.status(409).json({ error: "Attempt is no longer accepting a reveal" });
+      scheduleAttemptRecovery(attempt.id, "retry_pending", deadline);
+      return res.json({ finalized: false, result, retryDeadline: deadline });
+    }
+    if (attempt.state !== "retrying") return res.status(409).json({ error: "Attempt is no longer accepting a reveal" });
+    if (!finalizeAttemptTx(attempt, resultJson, new Date().toISOString(), ["retrying"])) {
+      const current = attemptForUser(attempt.id, req.user.id);
+      if (current?.state === "finalized") return res.json({ finalized: true, result: JSON.parse(current.finalized_result), locked: true });
+      return res.status(409).json({ error: "Attempt is no longer accepting a reveal" });
+    }
+    return res.json({ finalized: true, result, locked: true });
+  } catch (err) {
+    if (err?.code === "INVALID_GAME_INPUT") return res.status(400).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Could not score attempt" });
+  }
+});
+
+app.post("/api/attempts/:id/retry", authenticateToken, (req, res) => {
+  try {
+    recoverExpiredAttempts();
+    const attempt = attemptForUser(req.params.id, req.user.id);
+    if (!attempt) return res.status(404).json({ error: "Attempt not found" });
+    if (attempt.state !== "retry_pending") return res.status(409).json({ error: "Retry is unavailable" });
+    if (!attempt.retry_deadline || Date.parse(attempt.retry_deadline) <= Date.now()) {
+      if (attempt.first_result) finalizeAttemptTx(attempt, attempt.first_result, new Date().toISOString(), ["retry_pending"]);
+      return res.status(409).json({ error: "Retry window expired" });
+    }
+    const startedAt = new Date().toISOString();
+    const recoveryDeadline = new Date(Date.now() + RECOVERY_WINDOW_MS).toISOString();
+    const changed = db.transaction(() => db.prepare(`
+      UPDATE game_attempts
+      SET state='retrying', retry_started_at=?, retry_deadline=NULL, recovery_deadline=?
+      WHERE id=? AND state='retry_pending'
+    `).run(startedAt, recoveryDeadline, attempt.id))();
+    if (!changed.changes) return res.status(409).json({ error: "Retry is unavailable" });
+    clearTimeout(attemptTimers.get(attempt.id));
+    scheduleAttemptRecovery(attempt.id, "retrying", recoveryDeadline);
+    return res.json({ success: true, startedAt });
+  } catch (err) {
+    console.error("Attempt retry failed:", err);
+    return res.status(500).json({ error: "Could not reserve retry" });
+  }
+});
+
+app.post("/api/attempts/:id/finalize", authenticateToken, (req, res) => {
+  try {
+    recoverExpiredAttempts();
+    const attempt = attemptForUser(req.params.id, req.user.id);
+    if (!attempt) return res.status(404).json({ error: "Attempt not found" });
+    if (attempt.state === "finalized") return res.json({ finalized: true, result: JSON.parse(attempt.finalized_result), locked: true });
+    if (attempt.state !== "retry_pending" || !attempt.first_result) return res.status(409).json({ error: "Attempt is not ready to finalize" });
+    if (attempt.retry_deadline && Date.parse(attempt.retry_deadline) > Date.now()) return res.status(409).json({ error: "Retry window is still open" });
+    if (!finalizeAttemptTx(attempt, attempt.first_result, new Date().toISOString(), ["retry_pending"])) {
+      const current = attemptForUser(attempt.id, req.user.id);
+      if (current?.state === "finalized") return res.json({ finalized: true, result: JSON.parse(current.finalized_result), locked: true });
+      return res.status(409).json({ error: "Attempt is no longer ready to finalize" });
+    }
+    return res.json({ finalized: true, result: JSON.parse(attempt.first_result), locked: true });
+  } catch (err) {
+    console.error("Attempt finalization failed:", err);
+    return res.status(500).json({ error: "Could not finalize attempt" });
+  }
+});
+
+app.post("/api/attempts/:id/abandon", authenticateToken, (req, res) => {
+  try {
+    recoverExpiredAttempts();
+    let attempt = attemptForUser(req.params.id, req.user.id);
+    if (!attempt) return res.status(404).json({ error: "Attempt not found" });
+    if (attempt.state === "guessing") {
+      const changed = db.transaction(() => db.prepare("DELETE FROM game_attempts WHERE id=? AND state='guessing'").run(attempt.id))();
+      if (changed.changes) return res.json({ success: true, finalized: false });
+      attempt = attemptForUser(req.params.id, req.user.id);
+    }
+    if (!attempt) return res.status(404).json({ error: "Attempt not found" });
+    if (attempt.state === "finalized") return res.json({ success: true, finalized: true, result: JSON.parse(attempt.finalized_result), locked: true });
+    if (!attempt.first_result || !["retry_pending", "retrying"].includes(attempt.state)) return res.status(409).json({ error: "Attempt has no score" });
+    if (!finalizeAttemptTx(attempt, attempt.first_result, new Date().toISOString(), [attempt.state])) {
+      const current = attemptForUser(attempt.id, req.user.id);
+      if (current?.state === "finalized") return res.json({ success: true, finalized: true, result: JSON.parse(current.finalized_result), locked: true });
+      return res.status(409).json({ error: "Attempt is no longer active" });
+    }
+    return res.json({ success: true, finalized: true, result: JSON.parse(attempt.first_result), locked: true });
+  } catch (err) {
+    console.error("Attempt abandonment failed:", err);
+    return res.status(500).json({ error: "Could not abandon attempt" });
   }
 });
 
 const LEADERBOARD_MIN_GAMES = 5;
-
 app.get("/api/leaderboard", (req, res) => {
+  recoverExpiredAttempts();
   try {
-    const rows = db.prepare(`
-      SELECT u.username,
-             COUNT(s.profile_id) AS games,
-             ROUND(AVG(s.score)) AS avg,
-             MAX(s.score) AS best
-      FROM users u
-      JOIN scores s ON u.id = s.user_id
-      GROUP BY u.id
-      HAVING games >= ?
-      ORDER BY avg DESC
-      LIMIT 100
-    `).all(LEADERBOARD_MIN_GAMES);
+    profiles = loadProfiles();
+    const ids = profiles.map((p) => p.id);
+    if (!ids.length) return res.json([]);
+    const placeholders = ids.map(() => "?").join(",");
+    const rows = db.prepare(`SELECT u.username, COUNT(s.profile_id) AS games, ROUND(AVG(s.score)) AS avg, MAX(s.score) AS best
+      FROM users u JOIN scores s ON u.id=s.user_id WHERE s.profile_id IN (${placeholders}) GROUP BY u.id HAVING games>=? ORDER BY avg DESC LIMIT 100`)
+      .all(...ids, LEADERBOARD_MIN_GAMES);
     res.json(rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// ─── API Endpoints: Profile Locks ─────────────────────────────────────────────
-
-app.post("/api/locks", authenticateToken, (req, res) => {
-  const { profileId } = req.body;
-  if (typeof profileId !== 'string' || profileId.length === 0 || profileId.length > 64) {
-    return res.status(400).json({ error: "profileId must be a non-empty string up to 64 characters" });
-  }
-  try {
-    db.prepare(`
-      INSERT INTO profile_locks (user_id, profile_id, locked_at) VALUES (?, ?, ?)
-      ON CONFLICT(user_id, profile_id) DO UPDATE SET locked_at = excluded.locked_at
-    `).run(req.user.id, profileId, new Date().toISOString());
-    res.json({ success: true, locked: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
+  } catch (err) { console.error(err); res.status(500).json({ error: "Internal server error" }); }
 });
 
 app.get("/api/locks", authenticateToken, (req, res) => {
-  try {
-    const rows = db.prepare("SELECT profile_id FROM profile_locks WHERE user_id = ?").all(req.user.id);
-    res.json(rows.map(r => r.profile_id));
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
+  recoverExpiredAttempts();
+  try { res.json(db.prepare("SELECT profile_id FROM profile_locks WHERE user_id=?").all(req.user.id).map((row) => row.profile_id)); }
+  catch (err) { console.error(err); res.status(500).json({ error: "Internal server error" }); }
 });
 
 // ─── API Endpoints: Rivals ────────────────────────────────────────────────────

@@ -25,15 +25,20 @@ function ProfileCollapsedSummary({ profile, onExpand }) {
   );
 }
 
-// Informational per-phase countdown for the time-bonus window.
-// Display only — actual scoring uses the app-level guessStartAt timer.
-function TimeBonusChip() {
-  const [elapsed, setElapsed] = React.useState(0);
+// Informational countdown aligned to the server attempt's authoritative start.
+function TimeBonusChip({ startedAt }) {
+  const startMs = Date.parse(startedAt || "");
+  const [elapsed, setElapsed] = React.useState(() => Number.isFinite(startMs)
+    ? Math.max(0, Math.floor((Date.now() - startMs) / 1000))
+    : 0);
   React.useEffect(() => {
-    const startedAt = Date.now();
-    const id = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    const update = () => setElapsed(Number.isFinite(startMs)
+      ? Math.max(0, Math.floor((Date.now() - startMs) / 1000))
+      : 0);
+    update();
+    const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [startMs]);
   const state = elapsed <= 30 ? "full" : elapsed >= 120 ? "floor" : "shrinking";
   const kind = state === "full" ? "warn" : state === "shrinking" ? "info" : "neutral";
   const fade = state === "full" ? 1 : Math.max(0.55, 1 - 0.45 * (elapsed - 30) / 90);
@@ -50,6 +55,7 @@ function Phase2Tier({
   lacTierPick, setLacTierPick,
   noUniClaim, setNoUniClaim,
   noLacClaim, setNoLacClaim,
+  isPractice = false, attemptStartedAt = null,
   onLock, onBack
 }) {
   const T = window.TIERS;
@@ -66,7 +72,7 @@ function Phase2Tier({
           <h2>Predict the ceiling</h2>
         </div>
         <span className="sub">Pick one university outcome and one LAC outcome.</span>
-        <TimeBonusChip />
+        {isPractice ? null : <TimeBonusChip startedAt={attemptStartedAt} />}
       </div>
 
       <div className="callout" style={{ marginBottom: "var(--sp-4)" }}>
@@ -79,7 +85,7 @@ function Phase2Tier({
       <div className="card stagger" style={{ marginBottom: "var(--sp-3)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "var(--sp-3)" }}>
           <span className="label">Panel A · University tier</span>
-          <span className="chip">1 of 5</span>
+          <span className="chip">1 of {T.UNI_TIER_LIST.length}</span>
         </div>
         <div className="tier-grid tier-grid--uni" aria-disabled={noUniClaim}>
           {T.UNI_TIER_LIST.map(t => (

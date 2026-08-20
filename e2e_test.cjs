@@ -60,21 +60,38 @@ function waitForServer(port, timeoutMs = 10000) {
   });
 }
 
-function fetchJson(port, p) {
+function requestJson(port, p, { method = "GET", token, body, headers: extraHeaders } = {}) {
   return new Promise((resolve, reject) => {
-    http.get({ hostname: "127.0.0.1", port, path: p, timeout: 5000 }, (res) => {
-      let body = "";
-      res.on("data", (c) => (body += c));
+    const encoded = body === undefined ? null : JSON.stringify(body);
+    const headers = { Accept: "application/json", ...(extraHeaders || {}) };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    if (encoded !== null) {
+      headers["Content-Type"] = "application/json";
+      headers["Content-Length"] = Buffer.byteLength(encoded);
+    }
+    const req = http.request({ hostname: "127.0.0.1", port, path: p, method, headers, timeout: 5000 }, (res) => {
+      let raw = "";
+      res.on("data", (chunk) => (raw += chunk));
       res.on("end", () => {
-        if (res.statusCode !== 200) return reject(new Error(`GET ${p} -> ${res.statusCode}: ${body}`));
-        try {
-          resolve(JSON.parse(body));
-        } catch (e) {
-          reject(new Error(`GET ${p} bad JSON: ${body.slice(0, 200)}`));
-        }
+        let data = null;
+        try { data = raw ? JSON.parse(raw) : null; }
+        catch (_) { return reject(new Error(`${method} ${p} bad JSON: ${raw.slice(0, 200)}`)); }
+        resolve({ status: res.statusCode, data });
       });
-    }).on("error", reject);
+    });
+    req.on("error", reject);
+    req.on("timeout", () => req.destroy(new Error(`${method} ${p} timed out`)));
+    if (encoded !== null) req.write(encoded);
+    req.end();
   });
+}
+
+async function fetchJson(port, p, options) {
+  const response = await requestJson(port, p, options);
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`${options?.method || "GET"} ${p} -> ${response.status}: ${JSON.stringify(response.data)}`);
+  }
+  return response.data;
 }
 
 // ─── main ───────────────────────────────────────────────────────────────────
@@ -122,11 +139,13 @@ async function main() {
     const profiles = await fetchJson(port, "/api/profiles");
     if (!Array.isArray(profiles) || profiles.length === 0)
       throw new Error(`/api/profiles returned no profiles: ${JSON.stringify(profiles).slice(0, 200)}`);
-    if (profiles.some((profile) => profile && ("source" in profile || "application_results" in profile)))
-      throw new Error("Profile list leaked source metadata or hidden results");
-    const fullProfile = await fetchJson(port, `/api/profiles/${encodeURIComponent(profiles[0].id)}`);
-    if (fullProfile && "source" in fullProfile)
-      throw new Error("Full profile endpoint leaked source metadata");
+    if (profiles.some((profile) => profile && ("source" in profile || "application_results" in profile || "game_metadata" in profile)))
+      throw new Error("Profile list leaked source metadata, hidden results, or outcome hints");
+    const anonymousDetail = await requestJson(port, `/api/profiles/${encodeURIComponent(profiles[0].id)}`);
+    if (anonymousDetail.status !== 401 && anonymousDetail.status !== 403) {
+      throw new Error(`Premature full profile request was not denied: ${anonymousDetail.status}`);
+    }
+    log("PASS full profile endpoint denied anonymous answer access");
     log("PASS /api/profiles returned", profiles.length, "profiles");
 
     browser = await puppeteer.launch({
@@ -213,8 +232,36 @@ async function main() {
         clickButton("Reveal results"),
       ]);
     }
+    async function revealWithTierPicks(universityTier, lacTier) {
+      await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: POLL_TIMEOUT_MS });
+      await page.evaluate((uni, lac) => {
+        const pick = (selector, wanted) => {
+          const button = [...document.querySelectorAll(selector)]
+            .find((candidate) => (candidate.querySelector(".tname")?.textContent || "").trim() === wanted);
+          if (!button) throw new Error(`Tier pick ${wanted} not found`);
+          button.click();
+        };
+        pick(".tier-grid--uni button", uni);
+        pick(".tier-grid--lac button", lac);
+      }, universityTier, lacTier);
+      await Promise.all([
+        page.waitForSelector('[data-screen-label="03 Schools"]', { timeout: POLL_TIMEOUT_MS }),
+        clickButton("Lock in predictions"),
+      ]);
+      await Promise.all([
+        page.waitForSelector('[data-screen-label="04 Reveal"]', { timeout: POLL_TIMEOUT_MS }),
+        clickButton("Reveal results"),
+      ]);
+    }
 
-    async function readCaseScore(profileIdx) {
+
+    async function readCaseScore(profileIdx, expected = null) {
+      if (Number.isInteger(expected)) {
+        await page.waitForFunction((wanted) => Number((document.querySelector('[data-screen-label="04 Reveal"] .score-pop .num')?.textContent || "").trim()) === wanted,
+          { timeout: SHORT_TIMEOUT_MS }, expected);
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
       await page.waitForSelector('[data-screen-label="04 Reveal"] .score-pop .num', { timeout: SHORT_TIMEOUT_MS });
       await page.waitForFunction(
         () => {
@@ -253,6 +300,20 @@ async function main() {
       submitBtn.click(),
     ]);
     log("PASS registered and opened signed-in Home");
+    const token = await page.evaluate(() => localStorage.getItem("ao_token"));
+    if (!token) throw new Error("Registration did not persist an auth token");
+    const prematureDetail = await requestJson(port, `/api/profiles/${encodeURIComponent(profiles[0].id)}`, { token });
+    if (prematureDetail.status !== 403) {
+      throw new Error(`Authenticated unfinalized profile detail was not denied: ${prematureDetail.status}`);
+    }
+    log("PASS authenticated unfinalized answer access denied");
+
+    const disabledSubmissions = await requestJson(port, "/api/submissions", { token });
+    if (disabledSubmissions.status !== 503 || disabledSubmissions.data?.error !== "Submission tools are disabled") {
+      throw new Error(`Default submission gate failed: ${JSON.stringify(disabledSubmissions)}`);
+    }
+    log("PASS submission tools default to disabled");
+
 
     // Theme persistence remains covered on the new signed-in landing screen.
     const themeBefore = await page.evaluate(() => document.documentElement.dataset.theme || "dark");
@@ -278,12 +339,108 @@ async function main() {
     await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: POLL_TIMEOUT_MS });
     log("PASS Home Play action opened the applicant menu");
 
-    // ── Step 2: Finalize five distinct scored cases through the one retry ──
+    // A failed authoritative reveal write must disclose neither answers nor a
+    // lock/score. Preserve this injected persistence regression at the API
+    // boundary rather than the removed direct score endpoint.
+    let failNextRevealWrite = false;
+    let legacyMutationPosts = 0;
+    const attemptMutationPaths = [];
+    const detailRequestPaths = [];
+    await page.setRequestInterception(true);
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (request.method() === "POST" && (url.pathname === "/api/scores" || url.pathname === "/api/locks")) {
+        legacyMutationPosts += 1;
+      }
+      if (request.method() === "POST" && url.pathname.startsWith("/api/attempts/")) {
+        attemptMutationPaths.push(url.pathname);
+      }
+      if (request.method() === "GET" && /^\/api\/profiles\/[^/]+$/.test(url.pathname)) {
+        detailRequestPaths.push(url.pathname);
+      }
+      if (request.method() === "POST" && /\/api\/attempts\/[^/]+\/reveal$/.test(url.pathname) && failNextRevealWrite) {
+        failNextRevealWrite = false;
+        request.respond({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Injected reveal persistence failure" }),
+        });
+        return;
+      }
+      request.continue();
+    });
+    const observedRevealResponses = [];
+    page.on("response", async (response) => {
+      try {
+        const url = new URL(response.url());
+        if (/\/api\/attempts\/[^/]+\/reveal$/.test(url.pathname)) {
+          observedRevealResponses.push({ status: response.status(), body: await response.json() });
+        }
+      } catch (_) {}
+    });
+
+    const failureCardIndex = profiles.length - 1;
+    const failureProfileId = profiles[failureCardIndex].id;
+    await page.evaluate((idx) => {
+      const card = document.querySelectorAll('[data-screen-label="00 Menu"] .school-card')[idx];
+      if (!card) throw new Error(`Failure-path profile card ${idx} not found`);
+      card.click();
+    }, failureCardIndex);
+    await page.waitForSelector('[data-screen-label="01 Profile"]', { timeout: POLL_TIMEOUT_MS });
+    await startGuessing();
+    await selectNoAdmitClaims();
+    await Promise.all([
+      page.waitForSelector('[data-screen-label="03 Schools"]', { timeout: POLL_TIMEOUT_MS }),
+      clickButton("Lock in predictions"),
+    ]);
+    failNextRevealWrite = true;
+    await clickButton("Reveal results");
+    await page.waitForSelector('[role="alert"]', { timeout: SHORT_TIMEOUT_MS });
+    await new Promise((resolve) => setTimeout(resolve, 5500));
+    const failedWriteState = await page.evaluate(() => ({
+      hasSaveError: document.body.textContent.includes("Could not save this reveal"),
+      hasDetails: document.body.textContent.includes("Tier results") || !!document.querySelector(".final-banner"),
+    }));
+    const failedLocks = await fetchJson(port, "/api/locks", { token });
+    const failedMe = await fetchJson(port, "/api/me", { token });
+    if (!failedWriteState.hasSaveError || failedWriteState.hasDetails || failedLocks.includes(failureProfileId) || failedMe.scores?.[failureProfileId] !== undefined) {
+      throw new Error(`Reveal failure disclosed or persisted state: ${JSON.stringify({ ...failedWriteState, failedLocks, score: failedMe.scores?.[failureProfileId] })}`);
+    }
+    consoleErrors = consoleErrors.filter((message) => !message.includes("Injected reveal persistence failure"));
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForSelector('[data-screen-label="Home"]', { timeout: POLL_TIMEOUT_MS });
+    await clickButton("Play");
+    await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: POLL_TIMEOUT_MS });
+    log("PASS failed reveal write blocked answer disclosure and backend lock/score");
+    const escapeCardIndex = profiles.length - 2;
+    const escapeProfileId = profiles[escapeCardIndex].id;
+    const pageStartsBeforeEscape = attemptMutationPaths.filter((pathname) => pathname === "/api/attempts/start").length;
+    await page.evaluate((idx) => document.querySelectorAll('[data-screen-label="00 Menu"] .school-card')[idx].click(), escapeCardIndex);
+    await page.waitForSelector('[data-screen-label="01 Profile"]', { timeout: POLL_TIMEOUT_MS });
+    await startGuessing();
+    await page.keyboard.press("Escape");
+    await page.waitForSelector('[data-screen-label="00 Menu"]', { timeout: POLL_TIMEOUT_MS });
+    const pageStartsAfterEscape = attemptMutationPaths.filter((pathname) => pathname === "/api/attempts/start").length;
+    if (pageStartsAfterEscape !== pageStartsBeforeEscape + 1) throw new Error("Escape created an unexpected client attempt count");
+    const escapeLocks = await fetchJson(port, "/api/locks", { token });
+    const escapeMe = await fetchJson(port, "/api/me", { token });
+    if (escapeLocks.includes(escapeProfileId) || escapeMe.scores?.[escapeProfileId] !== undefined) {
+      throw new Error("Escape persisted an unscored attempt");
+    }
+    const escapeProbe = await fetchJson(port, "/api/attempts/start", {
+      method: "POST", token, body: { profileId: escapeProfileId },
+    });
+    await fetchJson(port, `/api/attempts/${encodeURIComponent(escapeProbe.attemptId)}/abandon`, { method: "POST", token });
+    log("PASS Escape abandoned the guess without score, lock, or stale attempt");
+
+
+    // ── Step 2: Finalize five distinct cases across retry, timeout, reload ──
     const NUM_PROFILES = 5;
     if (profiles.length < NUM_PROFILES) {
       throw new Error(`Need at least ${NUM_PROFILES} distinct profiles, found ${profiles.length}`);
     }
     const playedProfileIds = new Set();
+    const expectedResultKeys = ["accuracy", "lacPts", "rawScore", "score", "selectionPts", "timeFactor", "timeSeconds", "uniPts"];
 
     for (let profileIdx = 0; profileIdx < NUM_PROFILES; profileIdx++) {
       await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: SHORT_TIMEOUT_MS });
@@ -309,110 +466,200 @@ async function main() {
         if (correctChoicesPremature) throw new Error("Correct choices were visible before the case was finalized");
       }
 
+      const detailRequestsBeforeReveal = detailRequestPaths.length;
+      const pendingResponseOffset = observedRevealResponses.length;
       await startGuessing();
       await revealWithNoAdmitClaims();
-
-      // First reveal exposes only aggregate score cards and the five-second
-      // retry action. Outcome details must remain hidden during this window.
-      const firstScore = await readCaseScore(profileIdx);
       await page.waitForFunction(
         () => [...document.querySelectorAll('[data-screen-label="04 Reveal"] button')]
           .some((button) => /^Retry case \([1-5]s\)$/.test((button.textContent || "").trim())),
         { timeout: SHORT_TIMEOUT_MS },
       );
+
+      const responseDeadline = Date.now() + SHORT_TIMEOUT_MS;
+      let pendingResponse = null;
+      while (Date.now() < responseDeadline && !pendingResponse) {
+        pendingResponse = observedRevealResponses.slice(pendingResponseOffset)
+          .find((entry) => entry.status === 200 && entry.body?.finalized === false) || null;
+        if (!pendingResponse) await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      if (!pendingResponse) throw new Error(`Missing pending reveal response for profile #${profileIdx}`);
+      const resultKeys = Object.keys(pendingResponse.body.result || {}).sort();
+      const firstScore = pendingResponse.body.result.score;
+      const firstUiScore = await readCaseScore(profileIdx, firstScore);
+      if (firstUiScore !== firstScore) throw new Error(`UI/server first score mismatch: ${firstUiScore} vs ${firstScore}`);
+      if (JSON.stringify(resultKeys) !== JSON.stringify(expectedResultKeys)) {
+        throw new Error(`Pending reveal leaked or omitted result fields: ${JSON.stringify(resultKeys)}`);
+      }
+
       const firstRevealGate = await page.evaluate(() => {
         const screen = document.querySelector('[data-screen-label="04 Reveal"]');
         const text = screen?.textContent || "";
+        const scoreCard = screen?.querySelector(".score-pop")?.closest(".card");
+        const grid = scoreCard?.parentElement;
+        const retry = [...(screen?.querySelectorAll("button") || [])]
+          .find((button) => (button.textContent || "").startsWith("Retry case ("));
+        const scoreStyle = scoreCard ? getComputedStyle(scoreCard) : null;
         return {
           hasAggregates: ["Case score", "Accuracy", "Time"].every((label) => text.includes(label)),
           hasDetails: text.includes("Tier results") || text.includes("School-by-school") || !!screen?.querySelector(".final-banner"),
-          retryText: [...(screen?.querySelectorAll("button") || [])]
-            .map((button) => (button.textContent || "").trim())
-            .find((label) => label.startsWith("Retry case (")) || "",
+          retryText: (retry?.textContent || "").trim(),
+          visual: !!scoreCard && getComputedStyle(grid).display === "grid"
+            && Number.parseFloat(scoreStyle.borderRadius) > 0
+            && retry.getBoundingClientRect().height >= 30,
         };
       });
-      if (!firstRevealGate.hasAggregates || firstRevealGate.hasDetails || !/^Retry case \([1-5]s\)$/.test(firstRevealGate.retryText)) {
+      if (!firstRevealGate.hasAggregates || firstRevealGate.hasDetails || !firstRevealGate.visual
+          || !/^Retry case \([1-5]s\)$/.test(firstRevealGate.retryText)) {
         throw new Error(`First reveal gate failed for profile #${profileIdx}: ${JSON.stringify(firstRevealGate)}`);
       }
-      log(`PASS [profile #${profileIdx}] first reveal aggregate-only, score=${firstScore}, ${firstRevealGate.retryText}`);
 
-      await clickButton("Retry case (", false);
-      await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: POLL_TIMEOUT_MS });
-      await revealWithNoAdmitClaims();
-
-      // The retry is the final scoring attempt. Await the persisted lock and
-      // the resulting detailed verdict before navigating away.
-      await page.waitForFunction(
-        () => {
+      if (detailRequestPaths.length !== detailRequestsBeforeReveal) {
+        throw new Error(`Client requested full profile details before finalization for profile #${profileIdx}`);
+      }
+      let finalScore = firstScore;
+      let alreadyAtMenu = false;
+      if (profileIdx === 0) {
+        await clickButton("Retry case (", false);
+        await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: POLL_TIMEOUT_MS });
+        await revealWithTierPicks("T50", "T5 LAC");
+        await page.waitForFunction(() => {
           const screen = document.querySelector('[data-screen-label="04 Reveal"]');
-          const text = screen?.textContent || "";
-          return text.includes("Tier results") && !!screen?.querySelector(".final-banner");
-        },
-        { timeout: POLL_TIMEOUT_MS },
-      );
-      const finalScore = await readCaseScore(profileIdx);
-      const retryStillVisible = await page.evaluate(() =>
-        [...document.querySelectorAll('[data-screen-label="04 Reveal"] button')]
-          .some((button) => (button.textContent || "").includes("Retry case ("))
-      );
-      if (retryStillVisible) throw new Error(`Retry remained available after profile #${profileIdx} finalization`);
-      log(`PASS [profile #${profileIdx}] retry finalized with full details, score=${finalScore}`);
+          return (screen?.textContent || "").includes("Tier results") && !!screen?.querySelector(".final-banner");
+        }, { timeout: POLL_TIMEOUT_MS });
+        finalScore = await readCaseScore(profileIdx);
+        if (finalScore >= firstScore) {
+          throw new Error(`Exact retry replacement was not lower: first=${firstScore}, second=${finalScore}`);
+        }
+        log(`PASS lower second result replaced first exactly (${firstScore} -> ${finalScore})`);
+      } else if (profileIdx === 1) {
+        await page.waitForFunction(() => {
+          const screen = document.querySelector('[data-screen-label="04 Reveal"]');
+          return (screen?.textContent || "").includes("Tier results") && !!screen?.querySelector(".final-banner");
+        }, { timeout: POLL_TIMEOUT_MS });
+        finalScore = await readCaseScore(profileIdx);
+        if (finalScore !== firstScore) throw new Error(`Timeout changed first result: ${firstScore} -> ${finalScore}`);
+        log("PASS retry timeout finalized the first server result");
+      } else if (profileIdx === 2) {
+        const startsBeforeReload = attemptMutationPaths.filter((pathname) => pathname === "/api/attempts/start").length;
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await page.waitForSelector('[data-screen-label="Home"]', { timeout: POLL_TIMEOUT_MS });
+        await clickButton("Play");
+        await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: POLL_TIMEOUT_MS });
+        const startsAfterReload = attemptMutationPaths.filter((pathname) => pathname === "/api/attempts/start").length;
+        if (startsAfterReload !== startsBeforeReload) throw new Error("Reload created an extra scoring attempt");
+        alreadyAtMenu = true;
+        log("PASS reload during retry window recovered without another attempt");
+      } else {
+        await clickButton("Retry case (", false);
+        await page.waitForSelector('[data-screen-label="02 Tier"]', { timeout: POLL_TIMEOUT_MS });
+        await revealWithNoAdmitClaims();
+        await page.waitForFunction(() => {
+          const screen = document.querySelector('[data-screen-label="04 Reveal"]');
+          return (screen?.textContent || "").includes("Tier results") && !!screen?.querySelector(".final-banner");
+        }, { timeout: POLL_TIMEOUT_MS });
+        finalScore = await readCaseScore(profileIdx);
+      }
 
-      await clickButton("Menu");
-      await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: POLL_TIMEOUT_MS });
+      if (!alreadyAtMenu) {
+        const finalText = await page.$eval('[data-screen-label="04 Reveal"]', (screen) => screen.textContent || "");
+        if (/\bseason\b/i.test(finalText)) throw new Error(`Final result for profile #${profileIdx} contains season text`);
+        await clickButton("Menu");
+        await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: POLL_TIMEOUT_MS });
+      }
+
+      const locks = await fetchJson(port, "/api/locks", { token });
+      const me = await fetchJson(port, "/api/me", { token });
+      if (!locks.includes(selectedProfileId) || me.scores?.[selectedProfileId] !== finalScore) {
+        throw new Error(`Backend final state mismatch for ${selectedProfileId}: ${JSON.stringify({ locks, score: me.scores?.[selectedProfileId], finalScore })}`);
+      }
+      const authorizedDetail = await fetchJson(port, `/api/profiles/${encodeURIComponent(selectedProfileId)}`, { token });
+      if (!authorizedDetail.application_results || "source" in authorizedDetail) {
+        throw new Error(`Locked profile detail authorization malformed for ${selectedProfileId}`);
+      }
 
       const practiceBadgeVisible = await page.evaluate((idx) => {
         const card = document.querySelectorAll('[data-screen-label="00 Menu"] .school-card')[idx];
         return !!card && [...card.querySelectorAll(".badge")]
           .some((badge) => (badge.textContent || "").trim() === "Practice");
       }, profileIdx);
-      if (!practiceBadgeVisible) throw new Error(`Finalized profile #${profileIdx} was not marked Practice in the menu`);
+      if (!practiceBadgeVisible) throw new Error(`Finalized profile #${profileIdx} was not marked Practice`);
 
-      // Exercise one locked profile end-to-end as practice. Its profile shows
-      // Correct choices, and its reveal skips the scoring retry entirely.
       if (profileIdx === 0) {
-        await page.evaluate((idx) => {
-          const card = document.querySelectorAll('[data-screen-label="00 Menu"] .school-card')[idx];
-          if (!card) throw new Error(`Practice card ${idx} not found`);
-          card.click();
-        }, profileIdx);
+        const scoreBeforePractice = me.scores[selectedProfileId];
+        const attemptCallsBeforePractice = attemptMutationPaths.length;
+        await page.evaluate((idx) => document.querySelectorAll('[data-screen-label="00 Menu"] .school-card')[idx].click(), profileIdx);
         await page.waitForSelector('[data-screen-label="01 Profile"]', { timeout: POLL_TIMEOUT_MS });
-        await page.waitForFunction(
-          () => [...document.querySelectorAll('[data-screen-label="01 Profile"] button')]
-            .some((button) => (button.textContent || "").trim() === "Correct choices"),
-          { timeout: POLL_TIMEOUT_MS },
-        );
+        await page.waitForFunction(() => [...document.querySelectorAll('[data-screen-label="01 Profile"] button')]
+          .some((button) => (button.textContent || "").trim() === "Correct choices"), { timeout: POLL_TIMEOUT_MS });
         await clickButton("Correct choices");
-        await page.waitForFunction(
-          () => (document.querySelector('[data-screen-label="01 Profile"]')?.textContent || "")
-            .includes("This file is finalized and no longer affects your score."),
-          { timeout: SHORT_TIMEOUT_MS },
-        );
-
+        await page.waitForFunction(() => (document.querySelector('[data-screen-label="01 Profile"]')?.textContent || "")
+          .includes("This file is finalized and no longer affects your score."), { timeout: SHORT_TIMEOUT_MS });
         await startGuessing();
+        const practiceTierText = await page.$eval('[data-screen-label="02 Tier"]', (screen) => screen.textContent || "");
+        if (practiceTierText.includes("Time bonus")) throw new Error("Practice tier phase claimed a time bonus");
         await revealWithNoAdmitClaims();
-        await page.waitForFunction(
-          () => {
-            const screen = document.querySelector('[data-screen-label="04 Reveal"]');
-            return !!screen?.querySelector(".final-banner") && (screen.textContent || "").includes("Tier results");
-          },
-          { timeout: POLL_TIMEOUT_MS },
-        );
-        const practiceHasRetry = await page.evaluate(() =>
-          [...document.querySelectorAll('[data-screen-label="04 Reveal"] button')]
-            .some((button) => (button.textContent || "").includes("Retry case ("))
-        );
-        if (practiceHasRetry) throw new Error("Practice reveal incorrectly offered a scoring retry");
-        log("PASS locked profile opened practice with Correct choices and full no-retry reveal");
-
+        const practiceState = await page.$eval('[data-screen-label="04 Reveal"]', (screen) => {
+          const text = screen.textContent || "";
+          const labels = [...screen.querySelectorAll(".label")].map((node) => (node.textContent || "").trim());
+          return {
+            text,
+            hasPracticeCopy: text.includes("Practice feedback") && text.includes("not recorded"),
+            hasTimeClaim: labels.includes("Time") || text.includes("Score multiplier"),
+            hasScoringClaim: /ranking|contributed|season/i.test(text),
+            hasRetry: text.includes("Retry case ("),
+          };
+        });
+        if (!practiceState.hasPracticeCopy || practiceState.hasTimeClaim || practiceState.hasScoringClaim || practiceState.hasRetry) {
+          throw new Error(`Practice copy exposed scoring claims: ${JSON.stringify(practiceState)}`);
+        }
+        if (attemptMutationPaths.length !== attemptCallsBeforePractice) throw new Error("Practice called an attempt endpoint");
+        const meAfterPractice = await fetchJson(port, "/api/me", { token });
+        if (meAfterPractice.scores?.[selectedProfileId] !== scoreBeforePractice) {
+          throw new Error("Practice changed the persisted score");
+        }
         await clickButton("Menu");
         await page.waitForSelector('[data-screen-label="00 Menu"]', { timeout: POLL_TIMEOUT_MS });
+        log("PASS persisted Practice shows Correct choices, no scoring copy/calls, immutable score");
       }
     }
 
     if (playedProfileIds.size !== NUM_PROFILES) {
       throw new Error(`Expected ${NUM_PROFILES} distinct finalized cases, got ${playedProfileIds.size}`);
     }
+    if (legacyMutationPosts !== 0) throw new Error(`Observed ${legacyMutationPosts} legacy score/lock mutation calls`);
+
+
+    const rivalUsername = `r_${Date.now().toString().slice(-10)}`;
+    const rivalRegistration = await fetchJson(port, "/api/register", {
+      method: "POST",
+      body: { username: rivalUsername, password },
+    });
+    const rivalToken = rivalRegistration.token;
+    if (!rivalToken) throw new Error("Rival registration returned no token");
+    const rivalAttempt = await fetchJson(port, "/api/attempts/start", {
+      method: "POST",
+      token: rivalToken,
+      body: { profileId: profiles[0].id },
+    });
+    const rivalReveal = await fetchJson(port, `/api/attempts/${encodeURIComponent(rivalAttempt.attemptId)}/reveal`, {
+      method: "POST",
+      token: rivalToken,
+      body: {
+        universityTierPick: null,
+        lacTierPick: null,
+        noUniClaim: true,
+        noLacClaim: true,
+        schoolSelections: [],
+      },
+    });
+    if (rivalReveal.finalized !== false || !Number.isInteger(rivalReveal.result?.score)) {
+      throw new Error(`Rival pending reveal malformed: ${JSON.stringify(rivalReveal)}`);
+    }
+    await fetchJson(port, `/api/attempts/${encodeURIComponent(rivalAttempt.attemptId)}/abandon`, {
+      method: "POST",
+      token: rivalToken,
+    });
 
     // ── Step 3: Global leaderboard UI has no season dependency ─────────────
     await clickButton("Leaderboard");
@@ -459,6 +706,24 @@ async function main() {
       throw new Error(`Leaderboard rivalry/season gate failed: ${JSON.stringify(leaderboardUi)}`);
     }
     log(`PASS global leaderboard UI: avg=${uiAvg}, games=${uiGames}, best=${uiBest}, rivalry visible, no seasons`);
+    await page.type('input[aria-label="Rival username"]', rivalUsername);
+    await clickButton("Add rival");
+    await page.waitForFunction((wanted) => [...document.querySelectorAll(".card .row span")]
+      .some((node) => (node.textContent || "").includes(wanted)), { timeout: SHORT_TIMEOUT_MS }, rivalUsername);
+    const rivalList = await fetchJson(port, "/api/rivals", { token });
+    if (!rivalList.some((entry) => entry.username === rivalUsername)) {
+      throw new Error(`Rival was not persisted: ${JSON.stringify(rivalList)}`);
+    }
+    await clickButton("Duel");
+    await page.waitForFunction((profileId) => [...document.querySelectorAll(".leaderboard-grid--duel")]
+      .some((row) => (row.textContent || "").includes(profileId)), { timeout: POLL_TIMEOUT_MS }, profiles[0].id);
+    const duel = await fetchJson(port, `/api/duel/${encodeURIComponent(rivalUsername)}`, { token });
+    const shared = duel.common?.find((entry) => entry.profileId === profiles[0].id);
+    if (!shared || !Number.isInteger(shared.you) || !Number.isInteger(shared.them)) {
+      throw new Error(`Duel shared row missing or malformed: ${JSON.stringify(duel)}`);
+    }
+    log(`PASS actual rival add/list/duel shared row for ${profiles[0].id}`);
+
 
     // Preserve the API cross-check for this unique user after five distinct
     // finalized cases, now including the global best field.
@@ -486,6 +751,41 @@ async function main() {
       throw new Error(`Cross-check: avg/games/best invalid (row=${JSON.stringify(rowRecheck)})`);
     }
     log("PASS cross-checked global /api/leaderboard JSON for", username);
+
+    // Enabled submission tooling still requires the independent maintainer
+    // secret in addition to the user's bearer token.
+    const maintainerPort = await getFreePort();
+    const maintainerKey = "e2e-maintainer-key";
+    const maintainerServer = spawn("node", ["server.js"], {
+      cwd: REPO_DIR,
+      env: {
+        ...process.env,
+        PORT: String(maintainerPort),
+        SUBMISSIONS_ENABLED: "true",
+        MAINTAINER_API_KEY: maintainerKey,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    try {
+      await waitForServer(maintainerPort);
+      const missingKey = await requestJson(maintainerPort, "/api/submissions", { token });
+      const wrongKey = await requestJson(maintainerPort, "/api/submissions", {
+        token,
+        headers: { "X-Maintainer-Key": "wrong-key" },
+      });
+      const acceptedKey = await requestJson(maintainerPort, "/api/submissions", {
+        token,
+        headers: { "X-Maintainer-Key": maintainerKey },
+      });
+      if (missingKey.status !== 403 || wrongKey.status !== 403 || acceptedKey.status !== 200 || !Array.isArray(acceptedKey.data)) {
+        throw new Error(`Maintainer key gate failed: ${JSON.stringify({ missingKey, wrongKey, acceptedKey })}`);
+      }
+      log("PASS enabled submission tools require the maintainer key");
+    } finally {
+      maintainerServer.kill("SIGTERM");
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (!maintainerServer.killed) maintainerServer.kill("SIGKILL");
+    }
 
     log("ALL STEPS PASSED");
     return 0;

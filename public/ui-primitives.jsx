@@ -45,14 +45,38 @@ function Btn({ onClick, children, variant, disabled, icon, iconRight, ariaLabel,
   );
 }
 
-function Tabs({ tabs, active, onChange }) {
+// WAI-ARIA tabs pattern: roving tabindex, Arrow/Home/End keyboard
+// navigation (selection follows focus), and stable tab/panel id linkage.
+function Tabs({ tabs, active, onChange, idBase = "tabs" }) {
+  const tabRefs = useRef([]);
+  const count = tabs.length;
+
+  function onKeyDown(e) {
+    const activeIdx = tabs.findIndex(t => t.id === active);
+    let next = null;
+    if (e.key === "ArrowRight") next = (activeIdx + 1) % count;
+    else if (e.key === "ArrowLeft") next = (activeIdx - 1 + count) % count;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = count - 1;
+    else return;
+    e.preventDefault();
+    onChange(tabs[next].id);
+    // All tab buttons always render, so the target is focusable now.
+    tabRefs.current[next]?.focus();
+  }
+
   return (
-    <div className="tabs" role="tablist">
-      {tabs.map(t => (
+    <div className="tabs" role="tablist" onKeyDown={onKeyDown}>
+      {tabs.map((t, i) => (
         <button
           key={t.id}
+          ref={el => { tabRefs.current[i] = el; }}
+          type="button"
           role="tab"
+          id={`${idBase}-tab-${t.id}`}
           aria-selected={active === t.id}
+          aria-controls={`${idBase}-panel-${t.id}`}
+          tabIndex={active === t.id ? 0 : -1}
           className="tab"
           onClick={() => onChange(t.id)}
         >

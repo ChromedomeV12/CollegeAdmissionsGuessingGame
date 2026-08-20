@@ -1,6 +1,7 @@
 // app.jsx — updated with real auth (login/register)
 
 const API_BASE = window.API_BASE || "";
+const ACTIVE_ATTEMPT_KEY = "ao_active_attempt";
 
 function getStoredAuth() {
   const token = localStorage.getItem("ao_token");
@@ -183,13 +184,16 @@ function App() {
   const [showLeaderboard, setShowLeaderboard] = React.useState(false);
   const [fullProfile, setFullProfile] = React.useState(null);
   const [profileLoading, setProfileLoading] = React.useState(false);
-  const [guessStartAt, setGuessStartAt] = React.useState(null);
   const [retryUsed, setRetryUsed] = React.useState(false);
   const [isPractice, setIsPractice] = React.useState(false);
+  const [attempt, setAttempt] = React.useState(null);
+  const [serverResult, setServerResult] = React.useState(null);
+  const [scoringFinalized, setScoringFinalized] = React.useState(false);
+  const [orphanRecoveryDone, setOrphanRecoveryDone] = React.useState(false);
   // Permanent practice-only blacklist for the signed-in user.
   const [lockedProfiles, setLockedProfiles] = React.useState(new Set());
   const [locksLoaded, setLocksLoaded] = React.useState(false);
-  const scoreCommitRef = React.useRef(null);
+  const attemptRef = React.useRef(null);
   const [theme, setTheme] = React.useState(() => {
     const stored = localStorage.getItem("ao_theme");
     if (stored === "dark" || stored === "light") return stored;
@@ -229,9 +233,68 @@ function App() {
       });
   }, [auth]);
 
-  // Practice-only locks for this user, fetched before the case menu is shown.
+  // A reload or tab close cannot leave a guessing attempt usable. The server
+  // remains authoritative; this recovery call deletes an unscored guess or
+  // finalizes the pending first reveal before the profile list is enabled.
   React.useEffect(() => {
     if (!auth) return;
+    let cancelled = false;
+    setOrphanRecoveryDone(false);
+    let stored = null;
+    try {
+      stored = JSON.parse(localStorage.getItem(ACTIVE_ATTEMPT_KEY) || "null");
+    } catch (_) {
+      localStorage.removeItem(ACTIVE_ATTEMPT_KEY);
+    }
+    if (!stored?.attemptId || stored.username !== auth.username) {
+      localStorage.removeItem(ACTIVE_ATTEMPT_KEY);
+      setOrphanRecoveryDone(true);
+      return;
+    }
+
+    fetch(`${API_BASE}/api/attempts/${encodeURIComponent(stored.attemptId)}/abandon`, {
+      method: "POST",
+      headers: authHeaders(auth.token),
+    })
+      .then(response => {
+        if (!response.ok && response.status !== 404) {
+          throw new Error(`Attempt recovery failed (${response.status})`);
+        }
+        localStorage.removeItem(ACTIVE_ATTEMPT_KEY);
+        return fetch(`${API_BASE}/api/me`, { headers: { Authorization: `Bearer ${auth.token}` } });
+      })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => {
+        if (!cancelled && data?.scores) setScoresByProfile(data.scores);
+      })
+      .catch(err => {
+        console.error(err);
+        if (!cancelled) setError("Could not safely recover your unfinished case. Please retry.");
+      })
+      .finally(() => {
+        if (!cancelled) setOrphanRecoveryDone(true);
+      });
+    return () => { cancelled = true; };
+  }, [auth]);
+
+  React.useEffect(() => {
+    if (!auth) return;
+    const abandonOnExit = () => {
+      const current = attemptRef.current;
+      if (!current?.attemptId) return;
+      fetch(`${API_BASE}/api/attempts/${encodeURIComponent(current.attemptId)}/abandon`, {
+        method: "POST",
+        headers: authHeaders(auth.token),
+        keepalive: true,
+      }).catch(() => {});
+    };
+    window.addEventListener("pagehide", abandonOnExit);
+    return () => window.removeEventListener("pagehide", abandonOnExit);
+  }, [auth]);
+
+  // Practice-only locks for this user, fetched before the case menu is shown.
+  React.useEffect(() => {
+    if (!auth || !orphanRecoveryDone) return;
     setLocksLoaded(false);
     fetch(`${API_BASE}/api/locks`, { headers: authHeaders(auth.token) })
       .then(r => {
@@ -244,7 +307,7 @@ function App() {
       })
       .catch(() => setError("Could not load your finalized cases. Please retry."))
       .finally(() => setLocksLoaded(true));
-  }, [auth]);
+  }, [auth, orphanRecoveryDone]);
   function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
@@ -259,14 +322,86 @@ function App() {
 
   function handleLogin(username, token, scores) {
     setAuth({ username, token });
+    setOrphanRecoveryDone(false);
+    setLocksLoaded(false);
     if (scores) setScoresByProfile(scores);
     setShowHome(true);
     setShowLeaderboard(false);
   }
 
-  function handleLogout() {
+  function setCurrentAttempt(next) {
+    attemptRef.current = next;
+    setAttempt(next);
+    if (next?.attemptId && auth) {
+      localStorage.setItem(ACTIVE_ATTEMPT_KEY, JSON.stringify({ ...next, username: auth.username }));
+    } else {
+      localStorage.removeItem(ACTIVE_ATTEMPT_KEY);
+    }
+  }
+
+  async function apiJson(path, options = {}) {
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers: { ...authHeaders(auth.token), ...(options.headers || {}) },
+    });
+    let data = null;
+    try { data = await response.json(); } catch (_) {}
+    if (!response.ok) {
+      const message = data?.error || `Request failed (${response.status})`;
+      throw new Error(message);
+    }
+    return data;
+  }
+
+  function isValidResult(result) {
+    return !!result
+      && Number.isInteger(result.score) && result.score >= 0 && result.score <= 100
+      && Number.isInteger(result.rawScore) && result.rawScore >= 0 && result.rawScore <= 100
+      && Number.isFinite(result.accuracy)
+      && Number.isFinite(result.uniPts)
+      && Number.isFinite(result.lacPts)
+      && Number.isFinite(result.selectionPts)
+      && Number.isFinite(result.timeSeconds)
+      && Number.isFinite(result.timeFactor);
+  }
+
+  function applyFinalizedResult(pid, result) {
+    if (!pid || !isValidResult(result)) return;
+    setScoresByProfile(prev => ({ ...prev, [pid]: result.score }));
+    setLockedProfiles(prev => prev.has(pid) ? prev : new Set(prev).add(pid));
+  }
+
+  async function syncAccountState() {
+    const [me, locks] = await Promise.all([
+      apiJson("/api/me", { headers: { Authorization: `Bearer ${auth.token}` } }),
+      apiJson("/api/locks"),
+    ]);
+    if (!Array.isArray(locks) || !me?.scores) throw new Error("Invalid account state response");
+    setScoresByProfile(me.scores);
+    setLockedProfiles(new Set(locks));
+  }
+
+  async function abandonCurrentAttempt() {
+    const current = attemptRef.current;
+    if (!current?.attemptId) return true;
+    try {
+      const data = await apiJson(`/api/attempts/${encodeURIComponent(current.attemptId)}/abandon`, { method: "POST" });
+      setCurrentAttempt(null);
+      if (data?.result && isValidResult(data.result)) applyFinalizedResult(current.profileId, data.result);
+      await syncAccountState();
+      return true;
+    } catch (err) {
+      console.error(err);
+      setError("Could not safely leave this case. Please retry.");
+      return false;
+    }
+  }
+
+  async function handleLogout() {
+    if (!await abandonCurrentAttempt()) return;
     localStorage.removeItem("ao_token");
     localStorage.removeItem("ao_username");
+    localStorage.removeItem(ACTIVE_ATTEMPT_KEY);
     setAuth(null);
     setProfiles(null);
     setScoresByProfile({});
@@ -276,55 +411,13 @@ function App() {
     setShowLeaderboard(false);
     setFullProfile(null);
     setProfileLoading(false);
-    setGuessStartAt(null);
     setRetryUsed(false);
     setIsPractice(false);
+    setServerResult(null);
+    setScoringFinalized(false);
     setLockedProfiles(new Set());
     setLocksLoaded(false);
-  }
-
-  // Score commits are awaited by reveal actions and by any navigation lock.
-  // A locked/practice profile must never mutate local or server scores.
-  function commitScore(pid, score, breakdown) {
-    if (!pid || isPractice || lockedProfiles.has(pid)) return Promise.resolve();
-    const best = scoresByProfile[pid];
-    if (best != null && score <= best) return Promise.resolve();
-    setScoresByProfile(prev => {
-      const current = prev[pid];
-      return current == null || score > current ? { ...prev, [pid]: score } : prev;
-    });
-    const promise = !auth
-      ? Promise.resolve()
-      : fetch(`${API_BASE}/api/scores`, {
-          method: "POST",
-          headers: authHeaders(auth.token),
-          body: JSON.stringify({ profileId: pid, score, breakdown }),
-        })
-          .then(response => {
-            if (!response.ok) throw new Error(`Score commit failed (${response.status})`);
-          })
-          .catch(err => { console.error(err); });
-    scoreCommitRef.current = { pid, promise };
-    return promise;
-  }
-
-  async function lockProfile(pid) {
-    if (!pid) return;
-    const pending = scoreCommitRef.current;
-    if (pending?.pid === pid) await pending.promise;
-    const alreadyLocked = lockedProfiles.has(pid);
-    setLockedProfiles(prev => prev.has(pid) ? prev : new Set(prev).add(pid));
-    if (alreadyLocked || !auth) return;
-    try {
-      const response = await fetch(`${API_BASE}/api/locks`, {
-        method: "POST",
-        headers: authHeaders(auth.token),
-        body: JSON.stringify({ profileId: pid }),
-      });
-      if (!response.ok) throw new Error(`Profile lock failed (${response.status})`);
-    } catch (err) {
-      console.error(err);
-    }
+    setOrphanRecoveryDone(false);
   }
 
   function clearPicks() {
@@ -336,7 +429,9 @@ function App() {
   }
 
   async function fetchFullProfile(pid) {
-    const response = await fetch(`${API_BASE}/api/profiles/${encodeURIComponent(pid)}`);
+    const response = await fetch(`${API_BASE}/api/profiles/${encodeURIComponent(pid)}`, {
+      headers: authHeaders(auth.token),
+    });
     if (!response.ok) throw new Error(`Profile fetch failed (${response.status})`);
     return response.json();
   }
@@ -350,7 +445,8 @@ function App() {
     setProfileIdx(idx);
     setIsPractice(practice);
     setRetryUsed(false);
-    setGuessStartAt(null);
+    setServerResult(null);
+    setScoringFinalized(false);
     clearPicks();
     setFullProfile(null);
     setPhase(1);
@@ -366,67 +462,191 @@ function App() {
     }
   }
 
-  async function finalizeCurrentProfile() {
+  async function beginGuessing() {
     const selected = profileIdx !== null && profiles ? profiles[profileIdx] : null;
     if (!selected) return;
-    await lockProfile(selected.id);
-    setIsPractice(true);
+    if (isPractice) {
+      setPhase(2);
+      return;
+    }
+    const current = attemptRef.current;
+    if (current?.profileId === selected.id && (current.stage === "guessing" || current.stage === "retrying")) {
+      setPhase(2);
+      return;
+    }
+    try {
+      const data = await apiJson("/api/attempts/start", {
+        method: "POST",
+        body: JSON.stringify({ profileId: selected.id }),
+      });
+      if (!data?.attemptId || !data.startedAt || !Number.isFinite(Date.parse(data.startedAt))) {
+        throw new Error("Invalid attempt start response");
+      }
+      setCurrentAttempt({
+        attemptId: data.attemptId,
+        profileId: selected.id,
+        stage: "guessing",
+        startedAt: data.startedAt,
+      });
+      setPhase(2);
+    } catch (err) {
+      console.error(err);
+      setError("Could not start a scoring attempt. Please retry.");
+    }
   }
 
-  async function startPracticeRound() {
-    await finalizeCurrentProfile();
+  function predictionPayload() {
+    return {
+      universityTierPick,
+      lacTierPick,
+      noUniClaim: !!noUniClaim,
+      noLacClaim: !!noLacClaim,
+      schoolSelections: [...schoolSelections],
+    };
+  }
+
+  async function acceptFinalizedReveal(data, selected) {
+    if (!data?.finalized || data.locked !== true || !isValidResult(data.result)) {
+      throw new Error("Invalid finalized attempt response");
+    }
+    setCurrentAttempt(null);
+    applyFinalizedResult(selected.id, data.result);
+    const authorizedProfile = await fetchFullProfile(selected.id);
+    setFullProfile(authorizedProfile);
+    setServerResult(data.result);
+    setScoringFinalized(true);
+    setPhase(4);
+  }
+
+  async function revealResults() {
+    const selected = profileIdx !== null && profiles ? profiles[profileIdx] : null;
+    if (!selected) return;
+    if (isPractice) {
+      setServerResult(null);
+      setScoringFinalized(false);
+      setPhase(4);
+      return;
+    }
+    const current = attemptRef.current;
+    if (!current?.attemptId || (current.stage !== "guessing" && current.stage !== "retrying")) {
+      setError("This scoring attempt is no longer active. Please retry.");
+      return;
+    }
+    try {
+      const data = await apiJson(`/api/attempts/${encodeURIComponent(current.attemptId)}/reveal`, {
+        method: "POST",
+        body: JSON.stringify(predictionPayload()),
+      });
+      if (!isValidResult(data?.result)) throw new Error("Invalid attempt result");
+      if (data.finalized) {
+        await acceptFinalizedReveal(data, selected);
+        return;
+      }
+      if (!data.retryDeadline || !Number.isFinite(Date.parse(data.retryDeadline))) {
+        throw new Error("Invalid retry deadline");
+      }
+      setCurrentAttempt({
+        ...current,
+        stage: "retry_pending",
+        firstResult: data.result,
+        retryDeadline: data.retryDeadline,
+      });
+      setServerResult(data.result);
+      setScoringFinalized(false);
+      setPhase(4);
+    } catch (err) {
+      console.error(err);
+      setError("Could not save this reveal. Your answers remain hidden; please retry.");
+    }
+  }
+
+  async function finalizeCurrentAttempt() {
+    const selected = profileIdx !== null && profiles ? profiles[profileIdx] : null;
+    const current = attemptRef.current;
+    if (!selected || !current?.attemptId || current.stage !== "retry_pending") return false;
+    try {
+      const data = await apiJson(`/api/attempts/${encodeURIComponent(current.attemptId)}/finalize`, { method: "POST" });
+      await acceptFinalizedReveal(data, selected);
+      return true;
+    } catch (err) {
+      console.error(err);
+      setError("Could not finalize this case. Your answers remain hidden; please retry.");
+      return false;
+    }
+  }
+
+  async function handleRetry() {
+    const current = attemptRef.current;
+    if (isPractice || retryUsed || !current?.attemptId || current.stage !== "retry_pending") return false;
+    try {
+      const data = await apiJson(`/api/attempts/${encodeURIComponent(current.attemptId)}/retry`, { method: "POST" });
+      if (data?.success !== true || !data.startedAt || !Number.isFinite(Date.parse(data.startedAt))) {
+        throw new Error("Invalid retry response");
+      }
+      setCurrentAttempt({ ...current, stage: "retrying", startedAt: data.startedAt });
+      setRetryUsed(true);
+      clearPicks();
+      setFullProfile(null);
+      setServerResult(null);
+      setPhase(2);
+      return true;
+    } catch (err) {
+      console.error(err);
+      setError("Could not reserve the retry. Your first result is still pending.");
+      return false;
+    }
+  }
+
+  function startPracticeRound() {
+    const selected = profileIdx !== null && profiles ? profiles[profileIdx] : null;
+    if (!selected || !lockedProfiles.has(selected.id) || !fullProfile) return;
     clearPicks();
+    setIsPractice(true);
     setRetryUsed(false);
-    setGuessStartAt(null);
+    setServerResult(null);
+    setScoringFinalized(false);
     setPhase(1);
   }
 
-  // The only point-impacting retry: clear picks and go directly to phase 2.
-  function handleRetry() {
-    if (isPractice || retryUsed) return;
-    setRetryUsed(true);
-    clearPicks();
-    setFullProfile(null);
-    setGuessStartAt(Date.now());
-    setPhase(2);
-  }
-
   async function goNextProfile() {
-    const selected = profileIdx !== null && profiles ? profiles[profileIdx] : null;
-    if (selected && !isPractice) await lockProfile(selected.id);
+    if (!await abandonCurrentAttempt()) return false;
     clearPicks();
     setPhase(0);
     setProfileIdx(null);
-    setGuessStartAt(null);
     setFullProfile(null);
     setRetryUsed(false);
     setIsPractice(false);
+    setServerResult(null);
+    setScoringFinalized(false);
     setShowHome(false);
     setShowLeaderboard(false);
+    return true;
   }
+
   async function openLeaderboard() {
-    if (phase > 0 && profileIdx !== null) await goNextProfile();
+    if (phase > 0 && profileIdx !== null && !await goNextProfile()) return;
     setShowHome(false);
     setShowLeaderboard(true);
   }
 
-  async function handleLockTier() {
-    const selected = profileIdx !== null && profiles ? profiles[profileIdx] : null;
-    if (!selected) return;
-    try {
-      setFullProfile(await fetchFullProfile(selected.id));
-    } catch (err) {
-      console.error(err);
-      setError("Could not load the applicant decisions. Please retry.");
-      return;
-    }
+  function handleLockTier() {
     setPhase(3);
   }
-
 
   function resetForProfile() {
     startPracticeRound();
   }
+
+  React.useEffect(() => {
+    if (phase <= 0 || profileIdx === null) return;
+    const leaveOnEscape = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      goNextProfile();
+    };
+    window.addEventListener("keydown", leaveOnEscape);
+    return () => window.removeEventListener("keydown", leaveOnEscape);
+  }, [phase, profileIdx]);
 
   if (!authChecked) {
     return <CalmLoading label="Checking your session…" />;
@@ -455,7 +675,7 @@ function App() {
     );
   }
 
-  if (!profiles || !locksLoaded) {
+  if (!profiles || !locksLoaded || !orphanRecoveryDone) {
     return <CalmLoading label="Loading applicant files…" />;
   }
 
@@ -568,7 +788,7 @@ function App() {
             profileIdx={profileIdx}
             profileCount={profiles.length}
             canViewCorrectChoices={isPractice && !!fullProfile}
-            onStart={() => { setGuessStartAt(Date.now()); setPhase(2); }}
+            onStart={beginGuessing}
           />
         )
       )}
@@ -579,17 +799,21 @@ function App() {
           lacTierPick={lacTierPick} setLacTierPick={setLacTierPick}
           noUniClaim={noUniClaim} setNoUniClaim={setNoUniClaim}
           noLacClaim={noLacClaim} setNoLacClaim={setNoLacClaim}
+          isPractice={isPractice}
+          attemptStartedAt={attempt?.startedAt || null}
           onLock={handleLockTier}
           onBack={() => setPhase(1)}
         />
       )}
       {phase === 3 && profileIdx !== null && (
         <Phase3School
-          profile={fullProfile || profile}
+          profile={isPractice ? (fullProfile || profile) : profile}
           universityTierPick={universityTierPick} lacTierPick={lacTierPick}
           noUniClaim={noUniClaim} noLacClaim={noLacClaim}
           schoolSelections={schoolSelections} setSchoolSelections={setSchoolSelections}
-          onReveal={() => setPhase(4)} onBack={() => setPhase(2)}
+          isPractice={isPractice}
+          attemptStartedAt={attempt?.startedAt || null}
+          onReveal={revealResults} onBack={() => setPhase(2)}
         />
       )}
       {phase === 4 && profileIdx !== null && (
@@ -598,13 +822,13 @@ function App() {
           universityTierPick={universityTierPick} lacTierPick={lacTierPick}
           noUniClaim={noUniClaim} noLacClaim={noLacClaim}
           schoolSelections={schoolSelections} average={average} rank={rank}
-          guessStartAt={guessStartAt}
-          isPractice={isPractice} retryUsed={retryUsed}
-          onCommitScore={commitScore}
+          result={serverResult}
+          retryDeadline={attempt?.retryDeadline}
+          scoringFinalized={scoringFinalized}
+          isPractice={isPractice}
           onTryAgain={resetForProfile}
           onRetry={handleRetry}
-          onRetryExpired={finalizeCurrentProfile}
-          onFinalizeScoring={finalizeCurrentProfile}
+          onFinalizeScoring={finalizeCurrentAttempt}
           onNext={goNextProfile} hasNext={profileIdx + 1 < profiles.length}
         />
       )}

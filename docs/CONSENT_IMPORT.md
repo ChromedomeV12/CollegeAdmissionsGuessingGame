@@ -104,14 +104,15 @@ The export CLI (`npm run export-verified`) moves `verified_pending_review` rows 
 
 ## API and security controls
 
-- `GET /api/submissions/config` requires the existing bearer token and reports `enabled`. List/create/confirm/callback/delete routes additionally require `SUBMISSIONS_ENABLED=true`; otherwise they return `503 {"error":"Submission tools are disabled"}`.
+- `GET /api/submissions/config` requires the existing bearer token and reports `enabled`. List/create/confirm/delete routes additionally require `SUBMISSIONS_ENABLED=true` and an `X-Maintainer-Key` matching nonempty `MAINTAINER_API_KEY`; disabled routes return 503 and missing/wrong keys return 403.
+- The OAuth callback does not carry the maintainer header after Reddit's redirect; its cryptographically random, hashed, single-use state is the narrowly scoped callback authorization.
 - The game UI contains no submission navigation or form. The API/CLI workflow is for maintainers only.
-- Create attempts are limited to five per app user per hour in the current process.
+- Create attempts are limited to five per authenticated maintainer account per hour in the current process.
 - URLs accept HTTPS links from known Reddit hosts only and discard query strings and tracking parameters.
 - Duplicate Reddit post IDs are rejected unless the existing row belongs to the same authenticated maintainer and remains retryable, in which case the proof state is refreshed.
 - OAuth requests use least-privilege `identity read` scopes and `duration=temporary`; callback state is single-use.
 - Errors do not expose Reddit tokens, client secrets, or raw API responses.
-- Production requires HTTPS, a strong `JWT_SECRET`, persistent SQLite storage, backups, retention rules, and security logs excluding post bodies/secrets. Keep the player-facing deployment's submission flag disabled.
+- Production requires HTTPS, strong `JWT_SECRET` and `MAINTAINER_API_KEY` values, persistent SQLite storage, backups, retention rules, and security logs excluding post bodies/secrets. Keep the player-facing deployment's submission flag disabled.
 
 ## Editorial export and approval pipeline
 
@@ -125,6 +126,7 @@ Once a submission reaches `verified_pending_review`, it is not yet a playable ca
 Before setting `SUBMISSIONS_ENABLED=true` in any maintainer environment:
 
 - isolate it from the normal player-facing deployment and keep the latter disabled;
+- generate a strong `MAINTAINER_API_KEY` and send it only in the `X-Maintainer-Key` header over HTTPS;
 - register a Reddit **web app** and set the callback URI exactly; if API access is unavailable, treat public-JSON edit-code confirmation as best-effort and disable it or adopt a reviewed manual workflow when Reddit returns 403;
 - never deploy personal-cookie extraction or authenticated browser scraping as an API substitute;
 - publish a privacy policy covering Reddit data use, retention, withdrawal, and contact methods;
