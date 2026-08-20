@@ -12,66 +12,74 @@ function getStoredAuth() {
 function authHeaders(token) {
   return { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
 }
+async function readApiResponse(response) {
+  let data = null;
+  try { data = await response.json(); } catch (_) {}
+  if (!response.ok) throw new Error(data?.error || `Request failed (${response.status})`);
+  return data;
+}
 
-function CalmLoading({ label = "Loading…", minHeight = "60vh" }) {
+function CalmLoading({ label, minHeight = "60vh" }) {
+  const { t } = window.I18N.useI18n();
   return (
     <div className="app-shell center" style={{ minHeight, flexDirection: "column", gap: "var(--sp-3)" }}>
       <style>{`@keyframes aoPulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
       <p className="muted" style={{ animation: "aoPulse 1.6s ease-in-out infinite", fontFamily: "var(--font-mono)", letterSpacing: "0.06em", margin: 0 }}>
-        {label}
+        {label || t("common.loading")}
       </p>
     </div>
   );
 }
 
 function AvgRankChip({ rank, average }) {
+  const { t } = window.I18N.useI18n();
+  const rankName = t(`ranks.${rank.current.id}`);
   return (
-    <div className="rank-chip" title={`${rank.current.name} · ${average} avg`}>
+    <div className="rank-chip" title={t("rank.chipTitle", { rank: rankName, average })}>
       <span className="rank-chip__icon">
-        <i className={`ti ti-${rank.current.icon}`} />
+        <i className={`ti ti-${rank.current.icon}`} aria-hidden="true" />
       </span>
-      <span className="rank-chip__name">{rank.current.name}</span>
-      <span className="rank-chip__divider">·</span>
-      <span className="num rank-chip__points">{average} avg</span>
+      <span className="rank-chip__name">{rankName}</span>
+      <span className="rank-chip__divider" aria-hidden="true">·</span>
+      <span className="num rank-chip__points">{t("rank.chipValue", { average })}</span>
     </div>
   );
 }
 
 function HomeScreen({ onPlay }) {
+  const { t } = window.I18N.useI18n();
   return (
     <main className="home-screen fade-in" data-screen-label="Home">
       <section className="home-hero">
-        <span className="home-kicker">Read the file. Make the call.</span>
-        <h2 className="home-title">Admissions Oracle</h2>
-        <p className="home-copy">
-          Predict where an applicant was admitted, then see how closely your read matched the real outcome.
-        </p>
+        <span className="home-kicker">{t("home.kicker")}</span>
+        <h2 className="home-title">{t("auth.brand")}</h2>
+        <p className="home-copy">{t("home.copy")}</p>
         <div className="home-actions">
-          <Btn onClick={onPlay} iconRight="arrow-right" testId="home-play">Play</Btn>
+          <Btn onClick={onPlay} iconRight="arrow-right" testId="home-play">{t("home.play")}</Btn>
         </div>
       </section>
 
-      <section className="home-rules" aria-label="How to play">
+      <section className="home-rules" aria-label={t("home.rulesLabel")}>
         <article className="home-rule">
-          <span className="label">Score</span>
-          <strong>0–100 points</strong>
-          <p>Match the best university and LAC bands, then identify the admits inside your chosen bands.</p>
+          <span className="label">{t("home.score")}</span>
+          <strong>{t("home.scoreStrong")}</strong>
+          <p>{t("home.scoreBody")}</p>
         </article>
         <article className="home-rule">
-          <span className="label">Retry</span>
-          <strong>One scoring retry</strong>
-          <p>Your first reveal opens a five-second retry window. Later attempts on that case are practice only.</p>
+          <span className="label">{t("home.retry")}</span>
+          <strong>{t("home.retryStrong")}</strong>
+          <p>{t("home.retryBody")}</p>
         </article>
         <article className="home-rule">
-          <span className="label">Pace</span>
-          <strong>Time matters</strong>
-          <p>A time factor rewards decisive reads while preserving the 100-point case maximum.</p>
+          <span className="label">{t("home.pace")}</span>
+          <strong>{t("home.paceStrong")}</strong>
+          <p>{t("home.paceBody")}</p>
         </article>
       </section>
 
       <footer className="home-meta">
         <div className="home-authors">
-          <span className="label">Created by</span>
+          <span className="label">{t("home.createdBy")}</span>
           <span>ChromedomeV12 + Mason W (MJanW)</span>
         </div>
         <a
@@ -79,9 +87,10 @@ function HomeScreen({ onPlay }) {
           href="https://github.com/ChromedomeV12/CollegeAdmissionsGuessingGame"
           target="_blank"
           rel="noreferrer"
+          aria-label={t("home.github")}
         >
           <i className="ti ti-brand-github" aria-hidden="true" />
-          <span>GitHub</span>
+          <span>{t("home.github")}</span>
         </a>
       </footer>
     </main>
@@ -89,27 +98,28 @@ function HomeScreen({ onPlay }) {
 }
 
 function Phase0Menu({ profiles, onSelectProfile, scoresByProfile, lockedProfiles }) {
+  const { t, translateEnum } = window.I18N.useI18n();
   const completed = profiles.filter(profile => scoresByProfile[profile.id] !== undefined).length;
   return (
     <div className="fade-in" data-screen-label="00 Menu">
       <section className="library-intro">
         <div>
-          <span className="eyebrow">Admissions reading room</span>
-          <h2>Read the file.<br />Make the call.</h2>
-          <p>Eight compact applicant cases. No endless feed, no public usernames, just the evidence and your prediction.</p>
+          <span className="eyebrow">{t("menu.eyebrow")}</span>
+          <h2>{t("home.kicker")}</h2>
+          <p>{t("menu.description")}</p>
         </div>
-        <div className="library-stats" aria-label="Case library progress">
-          <div><strong className="num">{profiles.length}</strong><span>Seed cases</span></div>
-          <div><strong className="num">{completed}</strong><span>Completed</span></div>
-          <div><strong className="num">{profiles.length - completed}</strong><span>Unread</span></div>
+        <div className="library-stats" aria-label={t("menu.progressLabel")}>
+          <div><strong className="num">{profiles.length}</strong><span>{t("menu.seedCases")}</span></div>
+          <div><strong className="num">{completed}</strong><span>{t("menu.completed")}</span></div>
+          <div><strong className="num">{profiles.length - completed}</strong><span>{t("menu.unread")}</span></div>
         </div>
       </section>
       <div className="section-head">
         <div className="title-block">
-          <span className="eyebrow">Case library</span>
-          <h2>Select an applicant</h2>
+          <span className="eyebrow">{t("menu.libraryLabel")}</span>
+          <h2>{t("menu.selectApplicant")}</h2>
         </div>
-        <span className="sub">Each file hides the final decisions until the reveal.</span>
+        <span className="sub">{t("menu.revealHint")}</span>
       </div>
       <div className="grid grid-2 stagger">
         {profiles.map((p, i) => {
@@ -117,16 +127,18 @@ function Phase0Menu({ profiles, onSelectProfile, scoresByProfile, lockedProfiles
           const hasPlayed = score !== undefined;
           const isLocked = lockedProfiles && lockedProfiles.has(p.id);
           const num = String(i + 1).padStart(2, "0");
-          const kind = hasPlayed
-            ? (score > 0 ? "ok" : score < 0 ? "danger" : "neutral")
-            : "neutral";
+          const kind = hasPlayed ? (score > 0 ? "ok" : score < 0 ? "danger" : "neutral") : "neutral";
+          const status = hasPlayed
+            ? t("menu.playedStatus", { score })
+            : t("menu.unplayedStatus");
+          const practice = isLocked ? t("menu.practiceStatus") : "";
           return (
             <div
               key={p.id}
               className="card school-card"
               role="button"
               tabIndex={0}
-              aria-label={`Select applicant ${num}, ${p.id}${hasPlayed ? `, played, ${score} points` : ", not yet played"}${isLocked ? ", practice only" : ""}`}
+              aria-label={t("menu.selectAria", { num, id: p.id, status, practice })}
               data-card-num={num}
               aria-pressed={hasPlayed ? "true" : "false"}
               onClick={() => onSelectProfile(i)}
@@ -138,24 +150,22 @@ function Phase0Menu({ profiles, onSelectProfile, scoresByProfile, lockedProfiles
               }}
             >
               <div className="stack" style={{ gap: "var(--sp-1)" }}>
-                <span className="label">Applicant {num}</span>
+                <span className="label">{t("menu.applicant", { num })}</span>
                 <span className="name accent-text">{p.id}</span>
                 <span className="row" style={{ gap: "var(--sp-1)", flexWrap: "wrap", marginTop: "var(--sp-1)" }}>
-                  <span className="chip">{p.demographics?.gender || "Unknown"}</span>
-                  <span className="chip">{p.demographics?.ethnicity || "Unknown"}</span>
+                  <span className="chip">{translateEnum("gender", p.demographics?.gender) || t("common.unknown")}</span>
+                  <span className="chip">{p.demographics?.ethnicity || t("common.unknown")}</span>
                 </span>
               </div>
               <div className="stack" style={{ gap: "var(--sp-1)", alignItems: "flex-end" }}>
                 <span className={`check${hasPlayed ? " is-complete" : ""}`} aria-hidden="true">
                   {hasPlayed && <i className="ti ti-check" style={{ fontSize: "var(--fs-xs)" }} />}
                 </span>
-                {isLocked && (
-                  <Badge icon="lock">Practice</Badge>
-                )}
+                {isLocked && <Badge icon="lock">{t("menu.practice")}</Badge>}
                 {hasPlayed ? (
-                  <Badge kind={kind} icon={score > 0 ? "trophy" : null}>{score} pts</Badge>
+                  <Badge kind={kind} icon={score > 0 ? "trophy" : null}>{t("menu.points", { score })}</Badge>
                 ) : (
-                  <Badge icon="player-play">Unplayed</Badge>
+                  <Badge icon="player-play">{t("menu.unplayed")}</Badge>
                 )}
               </div>
             </div>
@@ -165,8 +175,8 @@ function Phase0Menu({ profiles, onSelectProfile, scoresByProfile, lockedProfiles
     </div>
   );
 }
-
 function App() {
+  const { t, localizeError } = window.I18N.useI18n();
   const [auth, setAuth] = React.useState(null);
   const [authChecked, setAuthChecked] = React.useState(false);
   const [profiles, setProfiles] = React.useState(null);
@@ -228,8 +238,8 @@ function App() {
         if (!Array.isArray(data)) throw new Error("Bad response");
         setProfiles(data);
       })
-      .catch(() => {
-        setError("Could not load profiles. Make sure the server is running.");
+      .catch(err => {
+        setError(localizeError(err));
       });
   }, [auth]);
 
@@ -268,8 +278,7 @@ function App() {
         if (!cancelled && data?.scores) setScoresByProfile(data.scores);
       })
       .catch(err => {
-        console.error(err);
-        if (!cancelled) setError("Could not safely recover your unfinished case. Please retry.");
+        if (!cancelled) setError(localizeError(err));
       })
       .finally(() => {
         if (!cancelled) setOrphanRecoveryDone(true);
@@ -305,7 +314,7 @@ function App() {
         if (!Array.isArray(ids)) throw new Error("Bad profile locks response");
         setLockedProfiles(new Set(ids));
       })
-      .catch(() => setError("Could not load your finalized cases. Please retry."))
+      .catch(err => setError(localizeError(err)))
       .finally(() => setLocksLoaded(true));
   }, [auth, orphanRecoveryDone]);
   function toggleTheme() {
@@ -392,7 +401,7 @@ function App() {
       return true;
     } catch (err) {
       console.error(err);
-      setError("Could not safely leave this case. Please retry.");
+      setError(localizeError(err));
       return false;
     }
   }
@@ -432,8 +441,7 @@ function App() {
     const response = await fetch(`${API_BASE}/api/profiles/${encodeURIComponent(pid)}`, {
       headers: authHeaders(auth.token),
     });
-    if (!response.ok) throw new Error(`Profile fetch failed (${response.status})`);
-    return response.json();
+    return readApiResponse(response);
   }
 
   async function selectProfile(idx) {
@@ -456,7 +464,7 @@ function App() {
       setFullProfile(await fetchFullProfile(selected.id));
     } catch (err) {
       console.error(err);
-      setError("Could not load the finalized applicant file. Please retry.");
+      setError(localizeError(err));
     } finally {
       setProfileLoading(false);
     }
@@ -491,7 +499,7 @@ function App() {
       setPhase(2);
     } catch (err) {
       console.error(err);
-      setError("Could not start a scoring attempt. Please retry.");
+      setError(localizeError(err));
     }
   }
 
@@ -529,7 +537,7 @@ function App() {
     }
     const current = attemptRef.current;
     if (!current?.attemptId || (current.stage !== "guessing" && current.stage !== "retrying")) {
-      setError("This scoring attempt is no longer active. Please retry.");
+      setError(t("errors.inactiveAttempt"));
       return;
     }
     try {
@@ -556,7 +564,7 @@ function App() {
       setPhase(4);
     } catch (err) {
       console.error(err);
-      setError("Could not save this reveal. Your answers remain hidden; please retry.");
+      setError(localizeError(err));
     }
   }
 
@@ -570,7 +578,7 @@ function App() {
       return true;
     } catch (err) {
       console.error(err);
-      setError("Could not finalize this case. Your answers remain hidden; please retry.");
+      setError(localizeError(err));
       return false;
     }
   }
@@ -592,7 +600,7 @@ function App() {
       return true;
     } catch (err) {
       console.error(err);
-      setError("Could not reserve the retry. Your first result is still pending.");
+      setError(localizeError(err));
       return false;
     }
   }
@@ -649,7 +657,7 @@ function App() {
   }, [phase, profileIdx]);
 
   if (!authChecked) {
-    return <CalmLoading label="Checking your session…" />;
+    return <CalmLoading label={t("auth.sessionChecking")} />;
   }
 
   if (!auth) {
@@ -663,12 +671,12 @@ function App() {
           <div className="callout" role="alert" style={{ background: "var(--bg-danger)", borderColor: "var(--border-danger)" }}>
             <i className="ti ti-alert-triangle" style={{ color: "var(--text-danger)" }} aria-hidden="true" />
             <div className="stack" style={{ gap: "var(--sp-1)" }}>
-              <span className="badge badge--danger" style={{ alignSelf: "flex-start" }}>Error</span>
+              <span className="badge badge--danger" style={{ alignSelf: "flex-start" }}>{t("common.error")}</span>
               <span style={{ color: "var(--text-danger)" }}>{error}</span>
             </div>
           </div>
           <button className="btn-primary" onClick={() => window.location.reload()} style={{ alignSelf: "center" }}>
-            <i className="ti ti-refresh" aria-hidden="true" /> Retry
+            <i className="ti ti-refresh" aria-hidden="true" /> {t("common.retry")}
           </button>
         </div>
       </div>
@@ -676,7 +684,7 @@ function App() {
   }
 
   if (!profiles || !locksLoaded || !orphanRecoveryDone) {
-    return <CalmLoading label="Loading applicant files…" />;
+    return <CalmLoading label={t("menu.loadingProfiles")} />;
   }
 
   const profile = profileIdx !== null ? profiles[profileIdx] : null;
@@ -688,18 +696,18 @@ function App() {
         <header className="topbar">
           <div className="brand">
             <div className="brand-mark" aria-hidden="true" />
-            <h1>Admissions <em>Oracle</em></h1>
+            <h1>{t("nav.appName")}</h1>
           </div>
           <div className="row">
-            <button className="btn-ghost" data-testid="nav-home" onClick={() => { setShowLeaderboard(false); setShowHome(true); }} aria-label="Open home">
-              <i className="ti ti-home" aria-hidden="true" /> Home
+            <button className="btn-ghost" data-testid="nav-home" onClick={() => { setShowLeaderboard(false); setShowHome(true); }} aria-label={t("nav.home")}>
+              <i className="ti ti-home" aria-hidden="true" /> {t("nav.home")}
             </button>
-            <button className="btn-ghost" data-testid="nav-menu" onClick={() => { setShowLeaderboard(false); setShowHome(false); setPhase(0); }} aria-label="Back to applicant menu">
-              <i className="ti ti-arrow-left" aria-hidden="true" /> Menu
+            <button className="btn-ghost" data-testid="nav-menu" onClick={() => { setShowLeaderboard(false); setShowHome(false); setPhase(0); }} aria-label={t("nav.back")}>
+              <i className="ti ti-arrow-left" aria-hidden="true" /> {t("nav.menu")}
             </button>
             <LanguageToggle />
-            <button className="btn-ghost" data-testid="nav-logout" onClick={handleLogout} aria-label="Log out">
-              <i className="ti ti-logout" aria-hidden="true" /> Log out
+            <button className="btn-ghost" data-testid="nav-logout" onClick={handleLogout} aria-label={t("nav.logout")}>
+              <i className="ti ti-logout" aria-hidden="true" /> {t("nav.logout")}
             </button>
           </div>
         </header>
@@ -714,19 +722,19 @@ function App() {
         <header className="topbar">
           <div className="brand">
             <div className="brand-mark" aria-hidden="true" />
-            <h1>Admissions <em>Oracle</em></h1>
+            <h1>{t("nav.appName")}</h1>
           </div>
           <div className="row">
-            <button className="btn-ghost" data-testid="nav-leaderboard" onClick={openLeaderboard} aria-label="Open leaderboard">
-              <i className="ti ti-trophy" aria-hidden="true" /> Leaderboard
+            <button className="btn-ghost" data-testid="nav-leaderboard" onClick={openLeaderboard} aria-label={t("nav.leaderboard")}>
+              <i className="ti ti-trophy" aria-hidden="true" /> {t("nav.leaderboard")}
             </button>
-            <button className="btn-ghost" data-testid="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
+            <button className="btn-ghost" data-testid="theme-toggle" onClick={toggleTheme} aria-label={t("nav.toggleTheme")}>
               <i className={`ti ti-${theme === "dark" ? "sun" : "moon"}`} aria-hidden="true" />
             </button>
             <LanguageToggle />
             <AvgRankChip rank={rank} average={average} />
-            <button className="btn-ghost" data-testid="nav-logout" onClick={handleLogout} aria-label="Log out">
-              <i className="ti ti-logout" aria-hidden="true" /> Log out
+            <button className="btn-ghost" data-testid="nav-logout" onClick={handleLogout} aria-label={t("nav.logout")}>
+              <i className="ti ti-logout" aria-hidden="true" /> {t("nav.logout")}
             </button>
           </div>
         </header>
@@ -740,36 +748,36 @@ function App() {
       <header className={`topbar${phase > 0 && profileIdx !== null ? " is-active-round" : ""}`}>
         <div className="brand">
           <div className="brand-mark" aria-hidden="true" />
-          <h1>Admissions <em>Oracle</em></h1>
+          <h1>{t("nav.appName")}</h1>
         </div>
         <div className="row">
           {phase === 0 && (
-            <button className="btn-ghost" data-testid="nav-home" onClick={() => setShowHome(true)} aria-label="Open home">
-              <i className="ti ti-home" aria-hidden="true" /> Home
+            <button className="btn-ghost" data-testid="nav-home" onClick={() => setShowHome(true)} aria-label={t("nav.homeAria")}>
+              <i className="ti ti-home" aria-hidden="true" /> {t("nav.home")}
             </button>
           )}
-          <button className="btn-ghost" data-testid="nav-leaderboard" onClick={openLeaderboard} aria-label="Open leaderboard">
-            <i className="ti ti-trophy" aria-hidden="true" /> Leaderboard
+          <button className="btn-ghost" data-testid="nav-leaderboard" onClick={openLeaderboard} aria-label={t("nav.leaderboard")}>
+            <i className="ti ti-trophy" aria-hidden="true" /> {t("nav.leaderboard")}
           </button>
           {phase > 0 && profileIdx !== null && (
             <>
               <div className="phase-meta">
-                <span>Case {String(profileIdx + 1).padStart(2, "0")} / {String(profiles.length).padStart(2, "0")}</span>
-                <span className="dot" />
-                <span>Phase {phase} / 4</span>
+                <span>{t("nav.caseMeta", { current: String(profileIdx + 1).padStart(2, "0"), total: String(profiles.length).padStart(2, "0") })}</span>
+                <span className="dot" aria-hidden="true" />
+                <span>{t("nav.phaseMeta", { phase })}</span>
               </div>
-              <button className="btn-ghost" data-testid="nav-menu" onClick={goNextProfile} aria-label="Back to applicant menu">
-                <i className="ti ti-list" aria-hidden="true" /> Menu
+              <button className="btn-ghost" data-testid="nav-menu" onClick={goNextProfile} aria-label={t("nav.menuAria")}>
+                <i className="ti ti-list" aria-hidden="true" /> {t("nav.menu")}
               </button>
             </>
           )}
-          <button className="btn-ghost" data-testid="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
+          <button className="btn-ghost" data-testid="theme-toggle" onClick={toggleTheme} aria-label={t("nav.toggleTheme")}>
             <i className={`ti ti-${theme === "dark" ? "sun" : "moon"}`} aria-hidden="true" />
           </button>
           <LanguageToggle />
           <AvgRankChip rank={rank} average={average} />
-          <button className="btn-ghost" data-testid="nav-logout" onClick={handleLogout} aria-label="Log out">
-            <i className="ti ti-logout" aria-hidden="true" /> Log out
+          <button className="btn-ghost" data-testid="nav-logout" onClick={handleLogout} aria-label={t("nav.logout")}>
+            <i className="ti ti-logout" aria-hidden="true" /> {t("nav.logout")}
           </button>
         </div>
       </header>
@@ -784,7 +792,7 @@ function App() {
       )}
       {phase === 1 && profileIdx !== null && (
         profileLoading ? (
-          <CalmLoading label="Loading finalized choices…" minHeight="30vh" />
+          <CalmLoading label={t("profile.loadingChoices")} minHeight="30vh" />
         ) : (
           <Phase1Profile
             profile={fullProfile || profile}
@@ -840,25 +848,33 @@ function App() {
 }
 
 function LeaderboardScreen({ username, average, rank, token }) {
+  const { t, localizeError } = window.I18N.useI18n();
   const [rows, setRows] = React.useState(null);
+  const [leaderboardError, setLeaderboardError] = React.useState(null);
   const [rivals, setRivals] = React.useState(null);
   const [rivalInput, setRivalInput] = React.useState("");
   const [rivalError, setRivalError] = React.useState(null);
   const [duel, setDuel] = React.useState(null);
-
+  const [duelError, setDuelError] = React.useState(null);
   React.useEffect(() => {
     fetch(`${API_BASE}/api/leaderboard`)
-      .then(r => r.json())
-      .then(setRows)
-      .catch(console.error);
+      .then(readApiResponse)
+      .then(data => {
+        if (!Array.isArray(data)) throw new Error("Invalid leaderboard response");
+        setRows(data);
+      })
+      .catch(err => setLeaderboardError(localizeError(err)));
   }, []);
 
   React.useEffect(() => {
     if (!token) return;
     fetch(`${API_BASE}/api/rivals`, { headers: authHeaders(token) })
-      .then(r => (r.ok ? r.json() : []))
-      .then(data => setRivals(Array.isArray(data) ? data : []))
-      .catch(console.error);
+      .then(readApiResponse)
+      .then(data => {
+        if (!Array.isArray(data)) throw new Error("Invalid rivals response");
+        setRivals(data);
+      })
+      .catch(err => setRivalError(localizeError(err)));
   }, [token]);
 
   function addRival() {
@@ -870,11 +886,7 @@ function LeaderboardScreen({ username, average, rank, token }) {
       headers: authHeaders(token),
       body: JSON.stringify({ username: name }),
     })
-      .then(r => {
-        if (r.status === 404) throw new Error("not-found");
-        if (!r.ok) throw new Error("failed");
-        return r.json();
-      })
+      .then(readApiResponse)
       .then(() => {
         setRivalInput("");
         setRivals(prev => {
@@ -883,16 +895,28 @@ function LeaderboardScreen({ username, average, rank, token }) {
           return list;
         });
       })
-      .catch(err => setRivalError(err && err.message === "not-found" ? `No player named "${name}".` : "Could not add that rival."));
+      .catch(err => setRivalError(
+        err && (err.message === "not-found" || err.message === "User not found")
+          ? t("leaderboard.noPlayer", { username: name })
+          : err && err.message === "failed"
+            ? t("leaderboard.addFailed")
+            : localizeError(err)
+      ));
   }
 
   function openDuel(name) {
-    if (!token) return;
+    setDuelError(null);
     setDuel({ username: name, data: null });
     fetch(`${API_BASE}/api/duel/${encodeURIComponent(name)}`, { headers: authHeaders(token) })
-      .then(r => (r.ok ? r.json() : Promise.reject(new Error("failed"))))
-      .then(data => setDuel({ username: name, data }))
-      .catch(() => setDuel({ username: name, data: { common: [] } }));
+      .then(readApiResponse)
+      .then(data => {
+        if (!data || !Array.isArray(data.common)) throw new Error("Invalid duel response");
+        setDuel({ username: name, data });
+      })
+      .catch(err => {
+        setDuelError(localizeError(err));
+        setDuel({ username: name, data: { common: [] } });
+      });
   }
 
   return (
@@ -900,36 +924,41 @@ function LeaderboardScreen({ username, average, rank, token }) {
       <div className="card" style={{ marginBottom: "var(--sp-5)" }}>
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "var(--sp-4)" }}>
           <div className="stack" style={{ gap: "var(--sp-1)" }}>
-            <span className="label">Logged in as <span className="accent-text">{username}</span></span>
-            <span className="num" style={{ fontSize: "var(--fs-h2)", fontWeight: 700, lineHeight: 1 }}>{average} avg</span>
-            <span className="muted">{rank.current.name}</span>
+            <span className="label">{t("leaderboard.loggedInAs")} <span className="accent-text">{username}</span></span>
+            <span className="num" style={{ fontSize: "var(--fs-h2)", fontWeight: 700, lineHeight: 1 }}>{t("leaderboard.avgScore", { average })}</span>
+            <span className="muted">{t(`ranks.${rank.current.id}`)}</span>
           </div>
         </div>
       </div>
 
       <div className="section-head">
         <div className="title-block">
-          <span className="eyebrow">Standings</span>
-          <h2>Global leaderboard</h2>
+          <span className="eyebrow">{t("leaderboard.standings")}</span>
+          <h2>{t("leaderboard.title")}</h2>
         </div>
-        <span className="muted" style={{ fontSize: "var(--fs-sm)", whiteSpace: "nowrap" }}>≥ 5 cases to qualify</span>
+        <span className="muted" style={{ fontSize: "var(--fs-sm)", whiteSpace: "nowrap" }}>{t("leaderboard.qualify")}</span>
       </div>
 
-      {!rows && <CalmLoading label="Loading standings…" minHeight="20vh" />}
+      {leaderboardError && (
+        <div className="callout callout--danger" role="alert" style={{ marginBottom: "var(--sp-3)" }}>
+          <span>{leaderboardError}</span>
+        </div>
+      )}
+      {!rows && !leaderboardError && <CalmLoading label={t("leaderboard.loadingStandings")} minHeight="20vh" />}
       {rows && rows.length === 0 && (
         <div className="card center" style={{ flexDirection: "column", gap: "var(--sp-2)", padding: "var(--sp-6)", textAlign: "center" }}>
           <i className="ti ti-trophy" aria-hidden="true" style={{ fontSize: 28, color: "var(--text-tertiary)" }} />
-          <p className="muted" style={{ margin: 0 }}>No scores yet — be the first!</p>
+          <p className="muted" style={{ margin: 0 }}>{t("leaderboard.noScores")}</p>
         </div>
       )}
       {rows && rows.length > 0 && (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           <div className="leaderboard-grid" style={{ color: "var(--text-tertiary)", fontSize: "var(--fs-xs)" }}>
-            <span>Rank</span>
-            <span>Player</span>
-            <span>Avg</span>
-            <span>Cases</span>
-            <span>Best</span>
+            <span>{t("leaderboard.rank")}</span>
+            <span>{t("leaderboard.player")}</span>
+            <span>{t("leaderboard.avg")}</span>
+            <span>{t("leaderboard.cases")}</span>
+            <span>{t("leaderboard.best")}</span>
           </div>
           {rows.map((row, i) => {
             const isYou = row.username === username;
@@ -943,15 +972,15 @@ function LeaderboardScreen({ username, average, rank, token }) {
                 <span
                   className={`badge ${top3 ? "badge--warn" : "badge--neutral"}`}
                   style={{ minWidth: 30, justifyContent: "center", fontFamily: "var(--font-mono)" }}
-                  aria-label={`Rank ${i + 1}`}
+                  aria-label={t("leaderboard.rankAria", { rank: i + 1 })}
                 >
                   {i + 1}
                 </span>
                 <span className="grow" style={{ fontWeight: isYou ? 600 : 400 }}>
                   {row.username}
-                  {isYou && <span className="chip" style={{ marginLeft: "var(--sp-2)" }}>you</span>}
+                  {isYou && <span className="chip" style={{ marginLeft: "var(--sp-2)" }}>{t("leaderboard.youChip")}</span>}
                 </span>
-                <span className="num" style={{ fontWeight: 600 }}>{row.avg} avg</span>
+                <span className="num" style={{ fontWeight: 600 }}>{t("leaderboard.avgScore", { average: row.avg })}</span>
                 <span className="num muted" style={{ fontSize: "var(--fs-sm)" }}>{row.games}</span>
                 <span className="num muted" style={{ fontSize: "var(--fs-sm)" }}>{row.best}</span>
               </div>
@@ -962,10 +991,10 @@ function LeaderboardScreen({ username, average, rank, token }) {
 
       <div className="section-head" style={{ marginTop: "var(--sp-6)" }}>
         <div className="title-block">
-          <span className="eyebrow">Rivalry</span>
-          <h2>Rivals</h2>
+          <span className="eyebrow">{t("leaderboard.rivalry")}</span>
+          <h2>{t("leaderboard.rivalsTitle")}</h2>
         </div>
-        <span className="muted" style={{ fontSize: "var(--fs-sm)" }}>Head-to-head on shared cases</span>
+        <span className="muted" style={{ fontSize: "var(--fs-sm)" }}>{t("leaderboard.rivalSubtitle")}</span>
       </div>
 
       <div className="card">
@@ -979,18 +1008,18 @@ function LeaderboardScreen({ username, average, rank, token }) {
             data-testid="rival-input"
             value={rivalInput}
             onChange={(e) => setRivalInput(e.target.value)}
-            placeholder="Add a rival by username"
-            aria-label="Rival username"
+            placeholder={t("leaderboard.rivalPlaceholder")}
+            aria-label={t("leaderboard.rivalAria")}
             style={{ flex: 1, minWidth: 0 }}
           />
-          <Btn onClick={addRival} icon="user-plus" disabled={!rivalInput.trim()} testId="rival-add">Add rival</Btn>
+          <Btn onClick={addRival} icon="user-plus" disabled={!rivalInput.trim()} testId="rival-add">{t("leaderboard.addRival")}</Btn>
         </form>
         {rivalError && (
           <div className="label" role="alert" style={{ color: "var(--text-danger)", marginTop: "var(--sp-2)" }}>{rivalError}</div>
         )}
         {rivals && rivals.length === 0 && !rivalError && (
           <p className="muted" style={{ margin: "var(--sp-3) 0 0", fontSize: "var(--fs-sm)" }}>
-            No rivals yet — add a player's username, then open a duel to compare cases you've both played.
+            {t("leaderboard.rivalEmpty")}
           </p>
         )}
         {rivals && rivals.length > 0 && (
@@ -1001,7 +1030,7 @@ function LeaderboardScreen({ username, average, rank, token }) {
                   <i className="ti ti-swords" aria-hidden="true" style={{ marginRight: 6, color: "var(--text-tertiary)" }} />
                   {r.username}
                 </span>
-                <Btn variant="ghost" onClick={() => openDuel(r.username)} iconRight="arrow-right" testId="duel-open">Duel</Btn>
+                <Btn variant="ghost" onClick={() => openDuel(r.username)} iconRight="arrow-right" testId="duel-open">{t("leaderboard.duel")}</Btn>
               </div>
             ))}
           </div>
@@ -1011,20 +1040,25 @@ function LeaderboardScreen({ username, average, rank, token }) {
       {duel && (
         <div className="card" style={{ padding: 0, overflow: "hidden", marginTop: "var(--sp-4)" }}>
           <div className="row" style={{ padding: "var(--sp-3) var(--sp-5)", borderBottom: "1px solid var(--border-1)", justifyContent: "space-between", flexWrap: "nowrap" }}>
-            <span className="label">Duel · you vs {duel.username}</span>
-            <Btn variant="ghost" onClick={() => setDuel(null)} icon="x" ariaLabel="Close duel view" />
+            <span className="label">{t("leaderboard.duelWith", { username: duel.username })}</span>
+            <Btn variant="ghost" onClick={() => setDuel(null)} icon="x" ariaLabel={t("leaderboard.closeDuel")} />
           </div>
-          {!duel.data && <CalmLoading label="Loading duel…" minHeight="15vh" />}
+          {duelError && (
+            <div className="callout callout--danger" role="alert">
+              <span>{duelError}</span>
+            </div>
+          )}
+          {!duel.data && <CalmLoading label={t("leaderboard.loadingDuel")} minHeight="15vh" />}
           {duel.data && duel.data.common.length === 0 && (
             <p className="muted" style={{ margin: 0, padding: "var(--sp-5)", fontSize: "var(--fs-sm)", textAlign: "center" }}>
-              No shared cases yet — play the same profiles to compare.
+              {t("leaderboard.sharedEmpty")}
             </p>
           )}
           {duel.data && duel.data.common.length > 0 && (
             <>
               <div className="leaderboard-grid leaderboard-grid--duel" style={{ color: "var(--text-tertiary)", fontSize: "var(--fs-xs)" }}>
-                <span>Case</span>
-                <span>You</span>
+                <span>{t("leaderboard.case")}</span>
+                <span>{t("leaderboard.youShort")}</span>
                 <span>{duel.username}</span>
               </div>
               {duel.data.common.map(c => {

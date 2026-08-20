@@ -4,6 +4,7 @@
 const API_BASE = window.API_BASE || "";
 
 function AuthScreen({ onLogin }) {
+  const { t, localizeError } = window.I18N.useI18n();
   const [mode, setMode] = React.useState("login"); // "login" or "register"
   const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -15,17 +16,17 @@ function AuthScreen({ onLogin }) {
     setError("");
 
     if (!username.trim() || !password) {
-      setError("Please fill in all fields.");
+      setError(t("auth.fillFields"));
       return;
     }
 
     if (mode === "register") {
       if (password !== confirmPassword) {
-        setError("Passwords don't match.");
+        setError(t("auth.passwordsMismatch"));
         return;
       }
       if (password.length < 8) {
-        setError("Password must be at least 8 characters.");
+        setError(t("auth.passwordMin"));
         return;
       }
     }
@@ -41,7 +42,7 @@ function AuthScreen({ onLogin }) {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || "Something went wrong.");
+        setError(localizeError(data.error));
         setLoading(false);
         return;
       }
@@ -51,7 +52,7 @@ function AuthScreen({ onLogin }) {
       localStorage.setItem("ao_username", data.username);
       onLogin(data.username, data.token, data.scores || {});
     } catch (err) {
-      setError("Could not connect to server.");
+      setError(localizeError(err));
       setLoading(false);
     }
   }
@@ -73,14 +74,12 @@ function AuthScreen({ onLogin }) {
       <div className="auth-stage fade-in">
         <section className="auth-intro">
           <div className="brand-mark" aria-hidden="true" />
-          <span className="eyebrow">Admissions casework</span>
-          <h1>Read closely.<br />Predict <em>boldly.</em></h1>
-          <p>
-            Study a real applicant file, call the outcome, then see what the admissions process actually rewarded.
-          </p>
+          <span className="eyebrow">{t("auth.eyebrow")}</span>
+          <h1>{t("auth.headline")}<br />{t("auth.headlineEm")}</h1>
+          <p>{t("auth.description")}</p>
           <div className="auth-docket">
-            <span>Inside each case</span>
-            <strong>Academics · activities · school tiers · final decisions</strong>
+            <span>{t("auth.docketLabel")}</span>
+            <strong>{t("auth.docketItems")}</strong>
           </div>
         </section>
 
@@ -90,25 +89,25 @@ function AuthScreen({ onLogin }) {
           </div>
           <div className="stack" style={{ gap: "var(--sp-5)" }}>
             <div>
-              <span className="eyebrow">Player access</span>
-              <h2>{mode === "login" ? "Continue your casework" : "Create your reader profile"}</h2>
+              <span className="eyebrow">{t("auth.access")}</span>
+              <h2>{mode === "login" ? t("auth.loginTitle") : t("auth.registerTitle")}</h2>
               <p className="muted" style={{ margin: 0 }}>
-                {mode === "login" ? "Your scores and rank are waiting." : "Choose a private game username to begin."}
+                {mode === "login" ? t("auth.loginSubtitle") : t("auth.registerSubtitle")}
               </p>
             </div>
 
-            <div className="seg" role="group" aria-label="Authentication mode">
-              <button type="button" data-testid="auth-mode-login" aria-pressed={mode === "login"} onClick={() => switchMode("login")}>Log in</button>
-              <button type="button" data-testid="auth-mode-register" aria-pressed={mode === "register"} onClick={() => switchMode("register")}>Create account</button>
+            <div className="seg" role="group" aria-label={t("auth.modeLabel")}>
+              <button type="button" data-testid="auth-mode-login" aria-pressed={mode === "login"} onClick={() => switchMode("login")}>{t("auth.login")}</button>
+              <button type="button" data-testid="auth-mode-register" aria-pressed={mode === "register"} onClick={() => switchMode("register")}>{t("auth.register")}</button>
             </div>
 
             <div className="stack" style={{ gap: "var(--sp-3)" }}>
               <div className="stack" style={{ gap: "var(--sp-1)" }}>
-                <label className="label" htmlFor="auth-username">Username</label>
+                <label className="label" htmlFor="auth-username">{t("auth.username")}</label>
                 <input
                   id="auth-username"
                   type="text"
-                  placeholder="your_username"
+                  placeholder={t("auth.usernamePlaceholder")}
                   value={username}
                   onChange={e => setUsername(e.target.value)}
                   onKeyDown={handleKey}
@@ -117,11 +116,11 @@ function AuthScreen({ onLogin }) {
                 />
               </div>
               <div className="stack" style={{ gap: "var(--sp-1)" }}>
-                <label className="label" htmlFor="auth-password">Password</label>
+                <label className="label" htmlFor="auth-password">{t("auth.password")}</label>
                 <input
                   id="auth-password"
                   type="password"
-                  placeholder={mode === "register" ? "At least 8 characters" : "Your password"}
+                  placeholder={mode === "register" ? t("auth.passwordMinPlaceholder") : t("auth.passwordPlaceholder")}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   onKeyDown={handleKey}
@@ -130,11 +129,11 @@ function AuthScreen({ onLogin }) {
               </div>
               {mode === "register" && (
                 <div className="stack" style={{ gap: "var(--sp-1)" }}>
-                  <label className="label" htmlFor="auth-confirm">Confirm password</label>
+                  <label className="label" htmlFor="auth-confirm">{t("auth.confirmPassword")}</label>
                   <input
                     id="auth-confirm"
                     type="password"
-                    placeholder="Same password again"
+                    placeholder={t("auth.confirmPlaceholder")}
                     value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)}
                     onKeyDown={handleKey}
@@ -144,7 +143,7 @@ function AuthScreen({ onLogin }) {
                   {confirmActive && (
                     <span id="confirm-feedback" aria-live="polite" className={`badge ${passwordsMatch ? "badge--ok" : "badge--danger"}`} style={{ alignSelf: "flex-start" }}>
                       <i className={`ti ${passwordsMatch ? "ti-check" : "ti-x"}`} aria-hidden="true" />
-                      {passwordsMatch ? "Passwords match" : "Passwords don't match"}
+                      {passwordsMatch ? t("auth.passwordsMatch") : t("auth.passwordsMismatch")}
                     </span>
                   )}
                 </div>
@@ -159,7 +158,7 @@ function AuthScreen({ onLogin }) {
             )}
 
             <button type="button" className="btn-primary" data-testid="auth-submit" onClick={handleSubmit} disabled={loading} aria-busy={loading} style={{ width: "100%" }}>
-              {loading ? "Please wait…" : mode === "login" ? "Log in" : "Create account"}
+              {loading ? t("auth.submitLoading") : mode === "login" ? t("auth.login") : t("auth.register")}
               <i className="ti ti-arrow-right" aria-hidden="true" />
             </button>
           </div>

@@ -75,6 +75,46 @@ test("resources have identical flat key sets and required top-level namespaces",
     assert.ok(Object.keys(I18N.resources.en).some((key) => key.startsWith(prefix)), `missing ${prefix}`);
   }
 });
+test("Task 3 shell resources cover visible auth, menu, navigation, leaderboard, rivalry, and rank copy", () => {
+  const { I18N } = loadGlobal();
+  const requiredKeys = [
+    "auth.eyebrow", "auth.headline", "auth.description", "auth.modeLabel", "auth.usernamePlaceholder",
+    "auth.passwordPlaceholder", "auth.passwordMinPlaceholder", "auth.confirmPlaceholder", "auth.submitLoading",
+    "nav.home", "nav.menu", "nav.leaderboard", "nav.logout", "nav.back", "nav.toggleTheme",
+    "nav.homeAria", "nav.menuAria", "nav.caseMeta", "nav.phaseMeta",
+    "home.kicker", "home.copy", "home.play", "home.rulesLabel", "home.score", "home.retry", "home.pace",
+    "menu.eyebrow", "menu.title", "menu.description", "menu.libraryLabel", "menu.selectApplicant",
+    "menu.progressLabel", "menu.seedCases", "menu.completed", "menu.unread", "menu.practice", "menu.unplayed",
+    "menu.applicant", "menu.selectAria", "menu.playedStatus", "menu.unplayedStatus", "menu.practiceStatus", "menu.points",
+    "leaderboard.standings", "leaderboard.qualify", "leaderboard.rank", "leaderboard.player", "leaderboard.avg",
+    "leaderboard.cases", "leaderboard.best", "leaderboard.noScores",
+    "leaderboard.rivalSubtitle", "leaderboard.rivalPlaceholder", "leaderboard.rivalAria",
+    "leaderboard.duelWith", "leaderboard.closeDuel", "leaderboard.sharedEmpty", "leaderboard.case",
+    "leaderboard.youShort", "leaderboard.noPlayer", "leaderboard.addFailed",
+  ];
+  for (const key of requiredKeys) {
+    assert.notEqual(I18N.resources.en[key], undefined, `missing English key ${key}`);
+    assert.notEqual(I18N.resources["zh-CN"][key], undefined, `missing Chinese key ${key}`);
+    assert.notEqual(I18N.resources.en[key], I18N.resources["zh-CN"][key], `untranslated ${key}`);
+  }
+  for (const id of ["observer", "reader", "junior", "senior", "dean", "oracle"]) {
+    assert.equal(typeof I18N.resources.en[`ranks.${id}`], "string");
+    assert.equal(typeof I18N.resources["zh-CN"][`ranks.${id}`], "string");
+  }
+});
+test("localizeError maps known server messages and hides unknown details", () => {
+  const diagnostics = [];
+  const zh = loadGlobal({
+    window: true,
+    console: { error: (...args) => diagnostics.push(args.join(" ")) },
+    localStorage: { getItem: () => "zh-CN", setItem: () => {} }
+  }).I18N.useI18n();
+  assert.equal(zh.localizeError(new Error("User already exists")), "该用户名已被占用。");
+  assert.equal(zh.localizeError("Invalid username or password."), "用户名或密码无效。");
+  assert.equal(zh.localizeError(new Error("server internals")), "发生了一些问题，请重试。");
+  assert.equal(diagnostics.length, 1);
+  assert.match(diagnostics[0], /server internals/);
+});
 
 test("Chinese resources do not accidentally leave English copy untranslated", () => {
   const { I18N } = loadGlobal();
@@ -84,6 +124,35 @@ test("Chinese resources do not accidentally leave English copy untranslated", ()
       assert.ok(preservedTokens.has(I18N.resources.en[key]), `unexpected untranslated value at ${key}`);
     }
   }
+});
+test("localizeError covers known app and attempt API failures", () => {
+  const zh = I18NForLocale("zh-CN");
+  const cases = [
+    ["Profile locked — practice only", "该档案已锁定——仅供练习。"],
+    ["Attempt already in progress", "已有进行中的尝试。"],
+    ["Invalid profile", "申请档案无效。"],
+    ["Attempt not found", "找不到该次尝试。"],
+    ["Could not score attempt", "无法为本次尝试计分。"],
+    ["Retry is unavailable", "重试不可用。"],
+    ["Retry window expired", "重试窗口已过期。"],
+    ["Retry window is still open", "重试窗口仍在开放。"],
+    ["Attempt is no longer ready to finalize", "此尝试还不能完成。"],
+    ["Attempt has no score", "此尝试没有分数。"],
+    ["Profile not found", "找不到该申请档案。"],
+    ["Profile is not finalized", "该申请档案尚未完成。"],
+    ["Attempt is no longer accepting a reveal", "无法保存本次揭晓。你的答案仍未公开，请重试。"],
+    ["Could not reserve retry", "无法保留重试机会。你的第一次结果仍在等待处理。"],
+    ["Could not finalize attempt", "无法完成此案件。你的答案仍未公开，请重试。"],
+    ["Could not abandon attempt", "无法安全离开此案件，请重试。"],
+    ["Could not load profiles", "无法加载档案，请确认服务器正在运行。"],
+    ["User not found", "找不到该玩家。"],
+    ["username must be a non-empty string", "请输入有效的对手用户名。"],
+    ["Could not start attempt", "无法开始计分，请重试。"]
+  ];
+  for (const [message, expected] of cases) assert.equal(zh.localizeError(message), expected, message);
+});
+test("Chinese duel copy is idiomatic", () => {
+  assert.equal(I18NForLocale("zh-CN").t("leaderboard.duelWith", { username: "张三" }), "你与 张三 对决");
 });
 
 test("interpolate substitutes named values and preserves missing placeholders", () => {
