@@ -239,7 +239,7 @@ function App() {
         setProfiles(data);
       })
       .catch(err => {
-        setError(localizeError(err));
+        setError(err);
       });
   }, [auth]);
 
@@ -278,7 +278,7 @@ function App() {
         if (!cancelled && data?.scores) setScoresByProfile(data.scores);
       })
       .catch(err => {
-        if (!cancelled) setError(localizeError(err));
+        if (!cancelled) setError(err);
       })
       .finally(() => {
         if (!cancelled) setOrphanRecoveryDone(true);
@@ -314,7 +314,7 @@ function App() {
         if (!Array.isArray(ids)) throw new Error("Bad profile locks response");
         setLockedProfiles(new Set(ids));
       })
-      .catch(err => setError(localizeError(err)))
+      .catch(err => setError(err))
       .finally(() => setLocksLoaded(true));
   }, [auth, orphanRecoveryDone]);
   function toggleTheme() {
@@ -401,7 +401,7 @@ function App() {
       return true;
     } catch (err) {
       console.error(err);
-      setError(localizeError(err));
+      setError(err);
       return false;
     }
   }
@@ -464,7 +464,7 @@ function App() {
       setFullProfile(await fetchFullProfile(selected.id));
     } catch (err) {
       console.error(err);
-      setError(localizeError(err));
+      setError(err);
     } finally {
       setProfileLoading(false);
     }
@@ -499,7 +499,7 @@ function App() {
       setPhase(2);
     } catch (err) {
       console.error(err);
-      setError(localizeError(err));
+      setError(err);
     }
   }
 
@@ -537,7 +537,7 @@ function App() {
     }
     const current = attemptRef.current;
     if (!current?.attemptId || (current.stage !== "guessing" && current.stage !== "retrying")) {
-      setError(t("errors.inactiveAttempt"));
+      setError({ key: "errors.inactiveAttempt" });
       return;
     }
     try {
@@ -564,7 +564,7 @@ function App() {
       setPhase(4);
     } catch (err) {
       console.error(err);
-      setError(localizeError(err));
+      setError(err);
     }
   }
 
@@ -578,7 +578,7 @@ function App() {
       return true;
     } catch (err) {
       console.error(err);
-      setError(localizeError(err));
+      setError(err);
       return false;
     }
   }
@@ -600,7 +600,7 @@ function App() {
       return true;
     } catch (err) {
       console.error(err);
-      setError(localizeError(err));
+      setError(err);
       return false;
     }
   }
@@ -672,7 +672,7 @@ function App() {
             <i className="ti ti-alert-triangle" style={{ color: "var(--text-danger)" }} aria-hidden="true" />
             <div className="stack" style={{ gap: "var(--sp-1)" }}>
               <span className="badge badge--danger" style={{ alignSelf: "flex-start" }}>{t("common.error")}</span>
-              <span style={{ color: "var(--text-danger)" }}>{error}</span>
+              <span style={{ color: "var(--text-danger)" }}>{error.key ? t(error.key, error.params) : localizeError(error)}</span>
             </div>
           </div>
           <button className="btn-primary" onClick={() => window.location.reload()} style={{ alignSelf: "center" }}>
@@ -702,7 +702,7 @@ function App() {
             <button className="btn-ghost" data-testid="nav-home" onClick={() => { setShowLeaderboard(false); setShowHome(true); }} aria-label={t("nav.home")}>
               <i className="ti ti-home" aria-hidden="true" /> {t("nav.home")}
             </button>
-            <button className="btn-ghost" data-testid="nav-menu" onClick={() => { setShowLeaderboard(false); setShowHome(false); setPhase(0); }} aria-label={t("nav.back")}>
+            <button className="btn-ghost" data-testid="nav-menu" onClick={() => { setShowLeaderboard(false); setShowHome(false); setPhase(0); }} aria-label={t("nav.menuAria")}>
               <i className="ti ti-arrow-left" aria-hidden="true" /> {t("nav.menu")}
             </button>
             <LanguageToggle />
@@ -863,7 +863,7 @@ function LeaderboardScreen({ username, average, rank, token }) {
         if (!Array.isArray(data)) throw new Error("Invalid leaderboard response");
         setRows(data);
       })
-      .catch(err => setLeaderboardError(localizeError(err)));
+      .catch(err => setLeaderboardError(err));
   }, []);
 
   React.useEffect(() => {
@@ -874,7 +874,7 @@ function LeaderboardScreen({ username, average, rank, token }) {
         if (!Array.isArray(data)) throw new Error("Invalid rivals response");
         setRivals(data);
       })
-      .catch(err => setRivalError(localizeError(err)));
+      .catch(err => setRivalError(err));
   }, [token]);
 
   function addRival() {
@@ -895,15 +895,17 @@ function LeaderboardScreen({ username, average, rank, token }) {
           return list;
         });
       })
-      .catch(err => setRivalError(
-        err && (err.message === "not-found" || err.message === "User not found")
-          ? t("leaderboard.noPlayer", { username: name })
-          : err && err.message === "failed"
-            ? t("leaderboard.addFailed")
-            : localizeError(err)
-      ));
-  }
+      .catch(err => {
+        if (err && (err.message === "not-found" || err.message === "User not found")) {
+          setRivalError({ key: "leaderboard.noPlayer", params: { username: name } });
+        } else if (err && err.message === "failed") {
+          setRivalError({ key: "leaderboard.addFailed" });
+        } else {
+          setRivalError(err);
+        }
+      });
 
+  }
   function openDuel(name) {
     setDuelError(null);
     setDuel({ username: name, data: null });
@@ -914,7 +916,7 @@ function LeaderboardScreen({ username, average, rank, token }) {
         setDuel({ username: name, data });
       })
       .catch(err => {
-        setDuelError(localizeError(err));
+        setDuelError(err);
         setDuel({ username: name, data: { common: [] } });
       });
   }
@@ -941,7 +943,7 @@ function LeaderboardScreen({ username, average, rank, token }) {
 
       {leaderboardError && (
         <div className="callout callout--danger" role="alert" style={{ marginBottom: "var(--sp-3)" }}>
-          <span>{leaderboardError}</span>
+          <span>{leaderboardError.key ? t(leaderboardError.key, leaderboardError.params) : localizeError(leaderboardError)}</span>
         </div>
       )}
       {!rows && !leaderboardError && <CalmLoading label={t("leaderboard.loadingStandings")} minHeight="20vh" />}
@@ -1015,7 +1017,7 @@ function LeaderboardScreen({ username, average, rank, token }) {
           <Btn onClick={addRival} icon="user-plus" disabled={!rivalInput.trim()} testId="rival-add">{t("leaderboard.addRival")}</Btn>
         </form>
         {rivalError && (
-          <div className="label" role="alert" style={{ color: "var(--text-danger)", marginTop: "var(--sp-2)" }}>{rivalError}</div>
+          <div className="label" role="alert" style={{ color: "var(--text-danger)", marginTop: "var(--sp-2)" }}>{rivalError.key ? t(rivalError.key, rivalError.params) : localizeError(rivalError)}</div>
         )}
         {rivals && rivals.length === 0 && !rivalError && (
           <p className="muted" style={{ margin: "var(--sp-3) 0 0", fontSize: "var(--fs-sm)" }}>
@@ -1045,7 +1047,7 @@ function LeaderboardScreen({ username, average, rank, token }) {
           </div>
           {duelError && (
             <div className="callout callout--danger" role="alert">
-              <span>{duelError}</span>
+              <span>{duelError.key ? t(duelError.key, duelError.params) : localizeError(duelError)}</span>
             </div>
           )}
           {!duel.data && <CalmLoading label={t("leaderboard.loadingDuel")} minHeight="15vh" />}

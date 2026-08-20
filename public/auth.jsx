@@ -9,24 +9,24 @@ function AuthScreen({ onLogin }) {
   const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
-  const [error, setError] = React.useState("");
+  const [error, setError] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
 
   async function handleSubmit() {
-    setError("");
+    setError(null);
 
     if (!username.trim() || !password) {
-      setError(t("auth.fillFields"));
+      setError({ key: "auth.fillFields" });
       return;
     }
 
     if (mode === "register") {
       if (password !== confirmPassword) {
-        setError(t("auth.passwordsMismatch"));
+        setError({ key: "auth.passwordsMismatch" });
         return;
       }
       if (password.length < 8) {
-        setError(t("auth.passwordMin"));
+        setError({ key: "auth.passwordMin" });
         return;
       }
     }
@@ -42,7 +42,7 @@ function AuthScreen({ onLogin }) {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(localizeError(data.error));
+        setError(data.error || new Error("Authentication request failed"));
         setLoading(false);
         return;
       }
@@ -52,7 +52,7 @@ function AuthScreen({ onLogin }) {
       localStorage.setItem("ao_username", data.username);
       onLogin(data.username, data.token, data.scores || {});
     } catch (err) {
-      setError(localizeError(err));
+      setError(err);
       setLoading(false);
     }
   }
@@ -63,7 +63,7 @@ function AuthScreen({ onLogin }) {
 
   function switchMode(next) {
     setMode(next);
-    setError("");
+    setError(null);
   }
 
   const confirmActive = mode === "register" && confirmPassword.length > 0;
@@ -153,7 +153,7 @@ function AuthScreen({ onLogin }) {
             {error && (
               <div className="callout callout--danger" role="alert">
                 <i className="ti ti-alert-triangle" aria-hidden="true" />
-                <span>{error}</span>
+                <span>{error.key ? t(error.key, error.params) : localizeError(error)}</span>
               </div>
             )}
 

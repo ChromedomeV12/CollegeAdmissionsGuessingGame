@@ -166,9 +166,9 @@ async function main() {
     await page.evaluate(() => localStorage.removeItem("ao_lang"));
     await page.reload({ waitUntil: "domcontentloaded" });
     assert.equal(await page.evaluate(() => document.documentElement.lang), "en");
+    await page.waitForSelector('[data-testid="language-toggle"]', { timeout: SHORT_TIMEOUT_MS });
     await page.click('[data-testid="language-toggle"]');
     await page.waitForFunction(() => document.documentElement.lang === "zh-CN" && localStorage.ao_lang === "zh-CN");
-    await page.reload({ waitUntil: "domcontentloaded" });
     assert.equal(await page.evaluate(() => document.documentElement.lang), "zh-CN");
     await page.click('[data-testid="language-toggle"]');
     await page.waitForFunction(() => document.documentElement.lang === "en" && localStorage.ao_lang === "en");
@@ -279,16 +279,36 @@ async function main() {
       return score;
     }
 
-    // ── Step 1: Register -> signed-in Home -> Play -> applicant menu ───────
+    // ── Step 1: Invalid-login copy follows locale without a request ────────
     await page.waitForSelector("#auth-username", { timeout: POLL_TIMEOUT_MS });
+    await page.type("#auth-username", `missing_${Date.now()}`);
+    await page.type("#auth-password", "wrongpass123");
+    await clickTestId("auth-submit");
+    await page.waitForFunction(
+      () => (document.querySelector('[role="alert"]')?.textContent || "").includes("Invalid username or password."),
+      { timeout: SHORT_TIMEOUT_MS },
+    );
+    await clickTestId("language-toggle");
+    await page.waitForFunction(() => document.documentElement.lang === "zh-CN");
+    await page.waitForFunction(
+      () => (document.querySelector('[role="alert"]')?.textContent || "").includes("用户名或密码无效。"),
+      { timeout: SHORT_TIMEOUT_MS },
+    );
+    await clickTestId("language-toggle");
+    await page.waitForFunction(() => document.documentElement.lang === "en");
+    log("PASS invalid-login error translated in-place across EN and zh-CN");
+
+    // ── Step 2: Register -> signed-in Home -> Play -> applicant menu ───────
     await clickTestId("auth-mode-register");
     await page.waitForSelector("#auth-confirm", { timeout: SHORT_TIMEOUT_MS });
 
-    await page.type("#auth-username", username);
-    const pwdInputs = await page.$$('input[type="password"]');
-    if (pwdInputs.length < 2) throw new Error("Expected two password inputs in register mode");
-    await pwdInputs[0].type(password);
-    await pwdInputs[1].type(password);
+    for (const [selector, value] of [["#auth-username", username], ["#auth-password", password], ["#auth-confirm", password]]) {
+      await page.click(selector);
+      await page.keyboard.down("Control");
+      await page.keyboard.press("A");
+      await page.keyboard.up("Control");
+      await page.type(selector, value);
+    }
 
     const submitBtn = await page.$('[data-testid="auth-submit"]');
     if (!submitBtn) throw new Error("Register submit button not found");
@@ -394,13 +414,18 @@ async function main() {
     await clickTestId("phase-reveal");
     await page.waitForSelector('[role="alert"]', { timeout: SHORT_TIMEOUT_MS });
     await new Promise((resolve) => setTimeout(resolve, 5500));
-    const failedWriteState = await page.evaluate(() => ({
-      hasSaveError: document.body.textContent.includes("Could not save this reveal"),
-      hasDetails: document.body.textContent.includes("Tier results") || !!document.querySelector(".final-banner"),
-    }));
+    const failedWriteState = await page.evaluate(() => {
+      const text = document.body.textContent || "";
+      return {
+        hasLocalizedAlert: !!document.querySelector('[role="alert"]'),
+        leakedRawError: text.includes("Injected reveal persistence failure"),
+        hasDetails: text.includes("Tier results") || !!document.querySelector(".final-banner"),
+      };
+    });
     const failedLocks = await fetchJson(port, "/api/locks", { token });
     const failedMe = await fetchJson(port, "/api/me", { token });
-    if (!failedWriteState.hasSaveError || failedWriteState.hasDetails || failedLocks.includes(failureProfileId) || failedMe.scores?.[failureProfileId] !== undefined) {
+    if (!failedWriteState.hasLocalizedAlert || failedWriteState.leakedRawError || failedWriteState.hasDetails
+        || failedLocks.includes(failureProfileId) || failedMe.scores?.[failureProfileId] !== undefined) {
       throw new Error(`Reveal failure disclosed or persisted state: ${JSON.stringify({ ...failedWriteState, failedLocks, score: failedMe.scores?.[failureProfileId] })}`);
     }
     consoleErrors = consoleErrors.filter((message) => !message.includes("Injected reveal persistence failure"));
