@@ -111,6 +111,39 @@ test("new auth tokens expire in about seven days", async () => {
   }
 });
 
+test("health and readiness probes report a usable single-instance service", async () => {
+  const health = await api("/healthz");
+  assert.equal(health.response.status, 200);
+  assert.equal(health.body.status, "ok");
+  assert.equal(health.response.headers.get("cache-control"), "no-store");
+  assert.equal(health.response.headers.get("x-content-type-options"), "nosniff");
+
+  const readiness = await api("/readyz");
+  assert.equal(readiness.response.status, 200);
+  assert.equal(readiness.body.status, "ready");
+  assert.ok(readiness.body.profiles > 0);
+});
+
+test("production startup fails closed without JWT_SECRET", async () => {
+  const failed = spawn(process.execPath, ["server.js"], {
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      NODE_ENV: "production",
+      JWT_SECRET: "",
+      DATA_DIR: dataDir,
+      PORT: String(port),
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let output = "";
+  failed.stdout.on("data", (chunk) => { output += chunk; });
+  failed.stderr.on("data", (chunk) => { output += chunk; });
+  const code = await new Promise((resolve) => failed.once("exit", resolve));
+  assert.notEqual(code, 0);
+  assert.match(output, /JWT_SECRET.*required in production/i);
+});
+
 test("profiles list redacts answer-bearing metadata while locked detail retains it", async () => {
   const listed = await api("/api/profiles");
   assert.equal(listed.response.status, 200);

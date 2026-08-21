@@ -1,0 +1,33 @@
+name: admissions-oracle-private
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: admissions-oracle:private
+    restart: unless-stopped
+    init: true
+    read_only: true
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3005"
+      STATIC_DIR: /app/dist
+      DATA_DIR: /app/data
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in deploy/private.env}
+      SUBMISSIONS_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${APP_PORT:-3005}:3005"
+    volumes:
+      - app-data:/app/data
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    stop_grace_period: 15s
+
+volumes:
+  app-data:

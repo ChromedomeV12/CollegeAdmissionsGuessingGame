@@ -1,0 +1,13 @@
+.git
+.github
+.worktrees
+.env
+deploy/private.env
+node_modules
+dist
+backups
+docs
+test
+*.log
+data/*
+!data/profiles.jsonl

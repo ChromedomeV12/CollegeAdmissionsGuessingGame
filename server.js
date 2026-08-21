@@ -21,7 +21,10 @@ import {
 
 const app = express();
 const PORT = process.env.PORT || 3005;
+const HOST = process.env.HOST || "0.0.0.0";
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret_for_dev";
+const STATIC_DIR = path.resolve(process.env.STATIC_DIR || (IS_PRODUCTION ? "dist" : "public"));
 const REDDIT_CLIENT_ID = process.env.REDDIT_CLIENT_ID || "";
 const REDDIT_CLIENT_SECRET = process.env.REDDIT_CLIENT_SECRET || "";
 const REDDIT_REDIRECT_URI = process.env.REDDIT_REDIRECT_URI || "";
@@ -42,6 +45,15 @@ const OAUTH_STATE_TTL_MS = 15 * 60 * 1000;
 const FALLBACK_CODE_TTL_MS = 30 * 60 * 1000;
 const FALLBACK_VERIFICATION_ENABLED = true;
 const redditOAuthConfigured = Boolean(REDDIT_CLIENT_ID && REDDIT_CLIENT_SECRET && REDDIT_REDIRECT_URI);
+if (IS_PRODUCTION && (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32)) {
+  throw new Error("JWT_SECRET is required in production and must be at least 32 characters");
+}
+if (IS_PRODUCTION && SUBMISSIONS_ENABLED && !MAINTAINER_API_KEY) {
+  throw new Error("MAINTAINER_API_KEY is required when submissions are enabled in production");
+}
+if (IS_PRODUCTION && !fs.existsSync(path.join(STATIC_DIR, "index.html"))) {
+  throw new Error(`Production assets are missing from ${STATIC_DIR}; run npm run build first`);
+}
 if (!process.env.JWT_SECRET) {
   console.warn("⚠️  JWT_SECRET not set — using insecure dev fallback. Set JWT_SECRET in production.");
 }
@@ -49,8 +61,38 @@ if (!redditOAuthConfigured) {
   console.warn("⚠️  Reddit ownership verification is disabled. Set REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, and REDDIT_REDIRECT_URI.");
 }
 
-app.use(bodyParser.json());
-app.use(express.static("public"));
+app.disable("x-powered-by");
+if (process.env.TRUST_PROXY === "1") {
+  app.set("trust proxy", 1);
+} else if (process.env.TRUST_PROXY === "loopback") {
+  app.set("trust proxy", "loopback");
+} else if (IS_PRODUCTION && process.env.TRUST_PROXY) {
+  throw new Error("TRUST_PROXY must be unset, '1', or 'loopback'");
+}
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  if (IS_PRODUCTION) {
+    res.setHeader("Content-Security-Policy", [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "connect-src 'self'",
+      "font-src 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+      "img-src 'self' data:",
+      "object-src 'none'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "worker-src 'none'",
+    ].join("; "));
+    if (req.secure) res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  next();
+});
+app.use(bodyParser.json({ limit: "32kb" }));
 
 const dataDir = process.env.DATA_DIR || "data";
 if (!fs.existsSync(dataDir)) {
@@ -218,6 +260,35 @@ const GAME_SCORE = globalThis.GAME_SCORE;
 if (!GAME_SCORE || !globalThis.TIERS || !globalThis.SCORING) throw new Error("Shared scoring scripts failed to load");
 
 let profiles = loadProfiles();
+
+app.get("/healthz", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ status: "ok" });
+});
+
+app.get("/readyz", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    db.prepare("SELECT 1 AS ready").get();
+    if (profiles.length === 0) return res.status(503).json({ status: "not_ready", profiles: 0 });
+    return res.json({ status: "ready", profiles: profiles.length });
+  } catch (error) {
+    console.error("Readiness check failed", error);
+    return res.status(503).json({ status: "not_ready" });
+  }
+});
+
+app.use(express.static(STATIC_DIR, {
+  index: false,
+  setHeaders(res, filePath) {
+    const relative = path.relative(STATIC_DIR, filePath).split(path.sep).join("/");
+    if (/^assets\/.*-[A-Z0-9]+\.(?:css|js|woff2?|ttf)$/i.test(relative)) {
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    } else {
+      res.setHeader("Cache-Control", "no-cache");
+    }
+  },
+}));
 
 // ─── Authentication Middleware ────────────────────────────────────────────────
 
@@ -1107,10 +1178,40 @@ app.get("/api/stats", (req, res) => {
 app.use("/api", (req, res) => res.status(404).json({ error: "Not found" }));
 
 app.get("*", (req, res) => {
-  res.sendFile(path.resolve("public/index.html"));
+  res.setHeader("Cache-Control", "no-store");
+  res.sendFile(path.join(STATIC_DIR, "index.html"));
 });
 
-app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+const server = app.listen(PORT, HOST, () => {
+  console.log(`✅ Server running at http://${HOST}:${PORT}`);
   console.log(`📦 Profiles loaded: ${profiles.length}`);
 });
+
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Received ${signal}; shutting down cleanly`);
+
+  const forceExit = setTimeout(() => {
+    console.error("Graceful shutdown timed out");
+    process.exit(1);
+  }, 10_000);
+  forceExit.unref();
+
+  server.close(() => {
+    for (const timer of attemptTimers.values()) clearTimeout(timer);
+    attemptTimers.clear();
+    try {
+      db.close();
+    } catch (error) {
+      console.error("Failed to close SQLite cleanly", error);
+      process.exitCode = 1;
+    }
+    clearTimeout(forceExit);
+    process.exit();
+  });
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
