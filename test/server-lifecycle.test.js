@@ -233,6 +233,9 @@ test("retrying survives restart until recovery deadline, then lazy recovery uses
   database = db();
   database.prepare("UPDATE game_attempts SET recovery_deadline=? WHERE id=?").run(new Date(Date.now() - 1).toISOString(), started.body.attemptId);
   database.close();
+  // Recovery sweeps are throttled to one per second; wait out the window so
+  // this request performs a fresh scan instead of hitting the guard.
+  await new Promise((resolve) => setTimeout(resolve, 1100));
   const recovered = await authApi(auth.token, "/api/me");
   assert.equal(recovered.response.status, 200);
   database = db();

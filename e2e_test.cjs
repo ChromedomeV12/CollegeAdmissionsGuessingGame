@@ -116,10 +116,15 @@ async function main() {
     HOST: "127.0.0.1",
     PORT: String(port),
     DATA_DIR: testDataDir,
+    // Dev servers now generate a random per-process secret when unset. The
+    // maintainer-gate check spawns a second server that must verify the same
+    // tokens, so pin one shared secret for the whole harness run.
+    JWT_SECRET: productionE2E
+      ? "production-e2e-secret-production-e2e-secret-1234567890"
+      : "development-e2e-secret-development-e2e-secret-123456",
     ...(productionE2E ? {
       NODE_ENV: "production",
       STATIC_DIR: path.join(REPO_DIR, "dist"),
-      JWT_SECRET: "production-e2e-secret-production-e2e-secret-1234567890",
     } : {}),
   };
   log("Using port", port, `(${productionE2E ? "production" : "development"})`);
