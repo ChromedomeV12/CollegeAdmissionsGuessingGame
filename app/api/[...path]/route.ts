@@ -652,7 +652,6 @@ function constantTimeStringEqual(left: string, right: string): boolean {
 }
 
 async function handleProfileImport(request: Request): Promise<Response> {
-  await requireUser(request);
   const configuredToken = env.PROFILE_IMPORT_TOKEN;
   if (!configuredToken) throw new ApiError(404, "Not found");
   const providedToken = request.headers.get("x-import-token") || "";
