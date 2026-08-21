@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { siteUserFromHeaders, type SiteUser } from "@/app/chatgpt-auth";
+import { ensureProfileSeed } from "@/lib/cloudflare-profile-seed";
 import {
   evaluateGame,
   type GamePrediction,
@@ -135,6 +136,7 @@ async function readJson<T>(request: Request, limit = MAX_JSON_BODY_BYTES): Promi
 async function ensureSchema(): Promise<void> {
   if (!env.DB) throw new ApiError(503, "Database unavailable");
   await env.DB.batch(SCHEMA_STATEMENTS.map((statement) => env.DB.prepare(statement)));
+  await ensureProfileSeed();
 }
 
 async function shortIdentityHash(value: string): Promise<string> {
