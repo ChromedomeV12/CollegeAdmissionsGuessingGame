@@ -1,5 +1,11 @@
 node_modules/
 dist/
+public/game/
+site-assets/
+.next/
+.wrangler/
+.vinext/
+*.tsbuildinfo
 backups/
 deploy/private.env
 .env

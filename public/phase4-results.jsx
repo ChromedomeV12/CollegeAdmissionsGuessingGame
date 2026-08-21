@@ -186,7 +186,7 @@ function scoreFor(profile, universityTierPick, lacTierPick, schoolSelections, no
 }
 
 function Phase4Results({
-  profile, universityTierPick, lacTierPick, noUniClaim, noLacClaim, schoolSelections,
+  profile, profileLabel, universityTierPick, lacTierPick, noUniClaim, noLacClaim, schoolSelections,
   average, rank, result: serverResult, retryDeadline, scoringFinalized,
   onTryAgain, onRetry, onFinalizeScoring, onNext, hasNext,
   isPractice
@@ -269,11 +269,11 @@ function Phase4Results({
     <div className="fade-in" data-screen-label="04 Reveal">
       <Stepper phase={4} />
 
-      {showDetails && <ProfileCollapsedSummary profile={profile} onExpand={onTryAgain} />}
+      {showDetails && <ProfileCollapsedSummary profile={profile} profileLabel={profileLabel} onExpand={onTryAgain} />}
 
       <div className="section-head">
         <h2>{t("reveal.title")}</h2>
-        <span className="sub">{profile.id}</span>
+        <span className="sub">{profileLabel}</span>
       </div>
       {isPractice && (
         <div className="callout" role="status" data-testid="practice-feedback" style={{ marginBottom: "var(--sp-4)" }}>

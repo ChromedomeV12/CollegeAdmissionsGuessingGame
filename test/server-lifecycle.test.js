@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import Database from "better-sqlite3";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const profileId = "cr_2026_001";
+const profileId = "profile_1";
 const predictionA = { universityTierPick: "HYPSM", lacTierPick: "T5 LAC", noUniClaim: false, noLacClaim: false, schoolSelections: [] };
 const predictionB = { universityTierPick: "T50", lacTierPick: "T20 LAC", noUniClaim: false, noLacClaim: false, schoolSelections: [] };
 let dataDir;
@@ -168,20 +168,20 @@ test("profiles list redacts answer-bearing metadata while locked detail retains 
 test("concurrent starts allow no attempt after a permanent lock", async () => {
   const auth = await register("start");
   const starts = await Promise.all([
-    authApi(auth.token, "/api/attempts/start", { method: "POST", body: JSON.stringify({ profileId: "cr_2026_002" }) }),
-    authApi(auth.token, "/api/attempts/start", { method: "POST", body: JSON.stringify({ profileId: "cr_2026_002" }) }),
+    authApi(auth.token, "/api/attempts/start", { method: "POST", body: JSON.stringify({ profileId: "profile_2" }) }),
+    authApi(auth.token, "/api/attempts/start", { method: "POST", body: JSON.stringify({ profileId: "profile_2" }) }),
   ]);
   assert.deepEqual(starts.map(({ response }) => response.status).sort(), [201, 409]);
   const attempt = starts.find(({ response }) => response.status === 201).body.attemptId;
   await authApi(auth.token, `/api/attempts/${attempt}/reveal`, { method: "POST", body: JSON.stringify(predictionA) });
   await authApi(auth.token, `/api/attempts/${attempt}/abandon`, { method: "POST" });
-  const after = await authApi(auth.token, "/api/attempts/start", { method: "POST", body: JSON.stringify({ profileId: "cr_2026_002" }) });
+  const after = await authApi(auth.token, "/api/attempts/start", { method: "POST", body: JSON.stringify({ profileId: "profile_2" }) });
   assert.equal(after.response.status, 409);
 });
 
 test("competing retry reveal and abandon have one durable winner", async () => {
   const auth = await register("race");
-  const started = await authApi(auth.token, "/api/attempts/start", { method: "POST", body: JSON.stringify({ profileId: "cr_2026_003" }) });
+  const started = await authApi(auth.token, "/api/attempts/start", { method: "POST", body: JSON.stringify({ profileId: "profile_3" }) });
   await authApi(auth.token, `/api/attempts/${started.body.attemptId}/reveal`, { method: "POST", body: JSON.stringify(predictionA) });
   const retry = await authApi(auth.token, `/api/attempts/${started.body.attemptId}/retry`, { method: "POST" });
   assert.equal(retry.response.status, 200);
@@ -195,9 +195,9 @@ test("competing retry reveal and abandon have one durable winner", async () => {
   assert.ok([200, 409].includes(abandon.response.status));
   const database = db();
   const row = database.prepare("SELECT state, first_result, finalized_result FROM game_attempts WHERE id=?").get(started.body.attemptId);
-  const score = database.prepare("SELECT breakdown FROM scores WHERE profile_id=?").get("cr_2026_003");
-  const lockCount = database.prepare("SELECT COUNT(*) AS count FROM profile_locks WHERE profile_id=?").get("cr_2026_003").count;
-  const scoreCount = database.prepare("SELECT COUNT(*) AS count FROM scores WHERE profile_id=?").get("cr_2026_003").count;
+  const score = database.prepare("SELECT breakdown FROM scores WHERE profile_id=?").get("profile_3");
+  const lockCount = database.prepare("SELECT COUNT(*) AS count FROM profile_locks WHERE profile_id=?").get("profile_3").count;
+  const scoreCount = database.prepare("SELECT COUNT(*) AS count FROM scores WHERE profile_id=?").get("profile_3").count;
   database.close();
   assert.equal(row.state, "finalized");
   assert.equal(score.breakdown, row.finalized_result);
@@ -212,7 +212,7 @@ test("competing retry reveal and abandon have one durable winner", async () => {
 
 test("retrying survives restart until recovery deadline, then lazy recovery uses first result", async () => {
   const auth = await register("recovery");
-  const started = await authApi(auth.token, "/api/attempts/start", { method: "POST", body: JSON.stringify({ profileId: "cr_2026_004" }) });
+  const started = await authApi(auth.token, "/api/attempts/start", { method: "POST", body: JSON.stringify({ profileId: "profile_4" }) });
   const first = await authApi(auth.token, `/api/attempts/${started.body.attemptId}/reveal`, { method: "POST", body: JSON.stringify(predictionA) });
   await authApi(auth.token, `/api/attempts/${started.body.attemptId}/retry`, { method: "POST" });
   let database = db();
@@ -244,7 +244,7 @@ test("retrying survives restart until recovery deadline, then lazy recovery uses
 
 test("finalization transaction rolls back score, lock, and attempt state on database failure", async () => {
   const auth = await register("rollback");
-  const rollbackProfile = "rednote_001";
+  const rollbackProfile = "profile_6";
   const started = await authApi(auth.token, "/api/attempts/start", {
     method: "POST",
     body: JSON.stringify({ profileId: rollbackProfile }),

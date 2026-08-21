@@ -156,6 +156,11 @@ test("Chinese duel copy is idiomatic", () => {
   assert.equal(I18NForLocale("zh-CN").t("leaderboard.duelWith", { username: "张三" }), "你与 张三 对决");
 });
 
+test("profile display names are neutral, sequential, and localized", () => {
+  assert.equal(I18NForLocale("en").t("profile.displayName", { number: 12 }), "Profile 12");
+  assert.equal(I18NForLocale("zh-CN").t("profile.displayName", { number: 12 }), "档案 12");
+});
+
 test("interpolate substitutes named values and preserves missing placeholders", () => {
   const { I18N } = loadGlobal();
   assert.equal(I18N.interpolate("Retry in {seconds}s", { seconds: 5 }), "Retry in 5s");
@@ -200,7 +205,7 @@ test("Task 4 resources cover profile, tier, school, and accessibility copy", () 
   const requiredKeys = [
     "stepper.progress",
     "rank.pointsTitle", "rank.pointsValue", "rank.pointsToNext", "rank.maxReached",
-    "profile.applicant", "profile.start", "profile.overview", "profile.extracurriculars",
+    "profile.applicant", "profile.displayName", "profile.start", "profile.overview", "profile.extracurriculars",
     "profile.correctFinalized", "profile.bestUniversityBand", "profile.noUniversityAdmit",
     "profile.bestLacBand", "profile.noLacAdmit", "profile.admittedSchools",
     "profile.universities", "profile.liberalArtsColleges", "profile.otherAdmits",

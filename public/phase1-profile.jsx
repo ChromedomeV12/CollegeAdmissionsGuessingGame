@@ -1,6 +1,6 @@
 // Phase 1 — Profile viewer with three tabs
 
-function Phase1Profile({ profile, onStart, profileIdx, profileCount, canViewCorrectChoices = false }) {
+function Phase1Profile({ profile, profileLabel, onStart, profileIdx, profileCount, canViewCorrectChoices = false }) {
   const [tab, setTab] = React.useState("overview");
   const [chartMode, setChartMode] = React.useState("bar"); // bar | donut
   const { t } = window.I18N.useI18n();
@@ -23,7 +23,7 @@ function Phase1Profile({ profile, onStart, profileIdx, profileCount, canViewCorr
               current: String(profileIdx + 1).padStart(2, "0"),
               total: String(profileCount).padStart(2, "0")
             })}</span>
-            <h2>{profile.id}</h2>
+            <h2>{profileLabel}</h2>
           </div>
           <Btn onClick={onStart} iconRight="arrow-right" testId="phase-start">{t("profile.start")}</Btn>
         </div>
