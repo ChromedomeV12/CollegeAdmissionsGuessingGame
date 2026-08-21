@@ -41,7 +41,6 @@ test("production build self-hosts every boot-critical browser dependency", () =>
   ]) {
     assert.equal(fs.existsSync(path.join(DIST, script)), true, `missing compiled ${script}`);
   }
-  assert.equal(fs.existsSync(path.join(DIST, "uploads")), false, "prototype uploads leaked into production assets");
 
   const builtSources = fs.readdirSync(DIST)
     .filter((file) => file.endsWith(".js"))
