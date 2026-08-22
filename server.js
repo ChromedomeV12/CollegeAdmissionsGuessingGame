@@ -3,7 +3,6 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import bodyParser from "body-parser";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -23,7 +22,8 @@ const app = express();
 const PORT = process.env.PORT || 3005;
 const HOST = process.env.HOST || "0.0.0.0";
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
-const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret_for_dev";
+const JWT_SECRET = process.env.JWT_SECRET
+  || (IS_PRODUCTION ? null : crypto.randomBytes(48).toString("base64url"));
 const STATIC_DIR = path.resolve(process.env.STATIC_DIR || (IS_PRODUCTION ? "dist" : "public"));
 const REDDIT_CLIENT_ID = process.env.REDDIT_CLIENT_ID || "";
 const REDDIT_CLIENT_SECRET = process.env.REDDIT_CLIENT_SECRET || "";
@@ -43,7 +43,6 @@ const SUBMISSIONS_ENABLED = process.env.SUBMISSIONS_ENABLED === "true";
 const CONSENT_VERSION = "2026-08-17";
 const OAUTH_STATE_TTL_MS = 15 * 60 * 1000;
 const FALLBACK_CODE_TTL_MS = 30 * 60 * 1000;
-const FALLBACK_VERIFICATION_ENABLED = true;
 const redditOAuthConfigured = Boolean(REDDIT_CLIENT_ID && REDDIT_CLIENT_SECRET && REDDIT_REDIRECT_URI);
 if (IS_PRODUCTION && (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32)) {
   throw new Error("JWT_SECRET is required in production and must be at least 32 characters");
@@ -55,8 +54,12 @@ if (IS_PRODUCTION && !fs.existsSync(path.join(STATIC_DIR, "index.html"))) {
   throw new Error(`Production assets are missing from ${STATIC_DIR}; run npm run build first`);
 }
 if (!process.env.JWT_SECRET) {
-  console.warn("⚠️  JWT_SECRET not set — using insecure dev fallback. Set JWT_SECRET in production.");
+  console.warn("⚠️  JWT_SECRET not set — using a random per-process secret. Sessions will not survive restarts. Set JWT_SECRET in production.");
 }
+
+// Purpose-bound key for the Reddit ownership fingerprint, derived from the
+// signing secret so a leaked fingerprint cannot be replayed as a token MAC.
+const OWNERSHIP_HMAC_KEY = crypto.hkdfSync("sha256", Buffer.from(JWT_SECRET), Buffer.alloc(0), Buffer.from("admissions-oracle:ownership-fingerprint"), 32);
 if (!redditOAuthConfigured) {
   console.warn("⚠️  Reddit ownership verification is disabled. Set REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, and REDDIT_REDIRECT_URI.");
 }
@@ -92,7 +95,7 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(bodyParser.json({ limit: "32kb" }));
+app.use(express.json({ limit: "32kb" }));
 
 const dataDir = process.env.DATA_DIR || "data";
 if (!fs.existsSync(dataDir)) {
@@ -298,7 +301,7 @@ function authenticateToken(req, res, next) {
 
   if (token == null) return res.status(401).json({ error: "No token provided" });
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
+  jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] }, (err, user) => {
     if (err) return res.status(403).json({ error: "Invalid token" });
     req.user = user;
     next();
@@ -340,15 +343,15 @@ function submissionForClient(row) {
   }
   return client;
 }
-
 function submissionRedirect(res, submissionId, status) {
   const query = new URLSearchParams({ submission: submissionId, submission_status: status });
   res.redirect(303, `/?${query.toString()}`);
 }
 
+
 function ownershipFingerprint(redditUsername) {
   return crypto
-    .createHmac("sha256", JWT_SECRET)
+    .createHmac("sha256", Buffer.from(OWNERSHIP_HMAC_KEY))
     .update(String(redditUsername).trim().toLowerCase())
     .digest("hex");
 }
@@ -484,9 +487,6 @@ app.get("/api/submissions", requireSubmissionsEnabled, requireMaintainerKey, aut
 });
 
 app.post("/api/submissions", requireSubmissionsEnabled, requireMaintainerKey, authenticateToken, submissionRateLimit, (req, res) => {
-  if (!redditOAuthConfigured && !FALLBACK_VERIFICATION_ENABLED) {
-    return res.status(503).json({ error: "Reddit ownership verification is not configured yet" });
-  }
   if (req.body?.consentAccepted !== true || req.body?.consentVersion !== CONSENT_VERSION) {
     return res.status(400).json({ error: "You must accept the current submission consent before continuing" });
   }
@@ -851,8 +851,14 @@ function finalizeAttemptTx(attempt, resultJson, nowIso, expectedStates) {
   return committed;
 }
 
+let lastRecoveryAt = 0;
 function recoverExpiredAttempts() {
   const now = Date.now();
+  // At most one recovery sweep per second. The CAS inside finalizeAttemptTx
+  // keeps correctness regardless of frequency; this only avoids re-running a
+  // full scan inside every read handler under load.
+  if (now - lastRecoveryAt < 1000) return;
+  lastRecoveryAt = now;
   const rows = db.prepare(`
     SELECT * FROM game_attempts
     WHERE (state='retry_pending' AND retry_deadline IS NOT NULL)

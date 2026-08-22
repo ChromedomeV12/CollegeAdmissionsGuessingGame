@@ -37,11 +37,9 @@
     "node-fetch": "^2.7.0"
   },
   "devDependencies": {
-    "@babel/parser": "^7.29.0",
     "@cloudflare/vite-plugin": "1.37.1",
     "@cloudflare/workers-types": "4.20260515.1",
     "@openai/sites-vite-plugin": "0.2.0",
-    "@playwright/test": "^1.60.0",
     "@tabler/icons-webfont": "3.19.0",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
