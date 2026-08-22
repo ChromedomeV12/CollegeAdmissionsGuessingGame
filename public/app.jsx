@@ -1,7 +1,11 @@
-// app.jsx — updated with real auth (login/register)
+// app.jsx — game shell with Cloudflare Sites identity
 
 const API_BASE = window.API_BASE || "";
 const ACTIVE_ATTEMPT_KEY = "ao_active_attempt";
+
+function usesHostedIdentity() {
+  return window.location.pathname.startsWith("/game/");
+}
 
 function getStoredAuth() {
   const token = localStorage.getItem("ao_token");
@@ -10,13 +14,21 @@ function getStoredAuth() {
 }
 
 function authHeaders(token) {
-  return { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
+  return {
+    "Content-Type": "application/json",
+    ...(token && token !== "site" ? { Authorization: `Bearer ${token}` } : {}),
+  };
 }
 async function readApiResponse(response) {
   let data = null;
   try { data = await response.json(); } catch (_) {}
   if (!response.ok) throw new Error(data?.error || `Request failed (${response.status})`);
   return data;
+}
+
+function profileDisplayName(t, profiles, profileId) {
+  const index = profiles.findIndex(profile => profile.id === profileId);
+  return t("profile.displayName", { number: index >= 0 ? index + 1 : "—" });
 }
 
 function CalmLoading({ label, minHeight = "60vh" }) {
@@ -132,13 +144,14 @@ function Phase0Menu({ profiles, onSelectProfile, scoresByProfile, lockedProfiles
             ? t("menu.playedStatus", { score })
             : t("menu.unplayedStatus");
           const practice = isLocked ? t("menu.practiceStatus") : "";
+          const displayName = t("profile.displayName", { number: i + 1 });
           return (
             <div
               key={p.id}
               className="card school-card"
               role="button"
               tabIndex={0}
-              aria-label={t("menu.selectAria", { num, id: p.id, status, practice })}
+              aria-label={t("menu.selectAria", { num, name: displayName, status, practice })}
               data-card-num={num}
               aria-pressed={hasPlayed ? "true" : "false"}
               onClick={() => onSelectProfile(i)}
@@ -151,7 +164,7 @@ function Phase0Menu({ profiles, onSelectProfile, scoresByProfile, lockedProfiles
             >
               <div className="stack" style={{ gap: "var(--sp-1)" }}>
                 <span className="label">{t("menu.applicant", { num })}</span>
-                <span className="name accent-text">{p.id}</span>
+                <span className="name accent-text">{displayName}</span>
                 <span className="row" style={{ gap: "var(--sp-1)", flexWrap: "wrap", marginTop: "var(--sp-1)" }}>
                   <span className="chip">{translateEnum("gender", p.demographics?.gender) || t("common.unknown")}</span>
                   <span className="chip">{p.demographics?.ethnicity || t("common.unknown")}</span>
@@ -215,18 +228,23 @@ function App() {
   }, [theme]);
 
   React.useEffect(() => {
-    const stored = getStoredAuth();
-    if (!stored) { setAuthChecked(true); return; }
-    fetch(`${API_BASE}/api/me`, { headers: { Authorization: `Bearer ${stored.token}` } })
+    const hosted = usesHostedIdentity();
+    const stored = hosted ? null : getStoredAuth();
+    if (!hosted && !stored) { setAuthChecked(true); return; }
+    fetch(`${API_BASE}/api/me`, { headers: authHeaders(stored?.token) })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data?.username) {
-          setAuth(stored);
+          setAuth(hosted ? { username: data.username, token: "site" } : stored);
+          localStorage.setItem("ao_username", data.username);
           if (data.scores) setScoresByProfile(data.scores);
         }
-        else { localStorage.removeItem("ao_token"); localStorage.removeItem("ao_username"); }
+        else {
+          localStorage.removeItem("ao_token");
+          localStorage.removeItem("ao_username");
+        }
       })
-      .catch(() => setAuth(stored))
+      .catch(() => { if (!hosted && stored) setAuth(stored); })
       .finally(() => setAuthChecked(true));
   }, []);
 
@@ -271,7 +289,7 @@ function App() {
           throw new Error(`Attempt recovery failed (${response.status})`);
         }
         localStorage.removeItem(ACTIVE_ATTEMPT_KEY);
-        return fetch(`${API_BASE}/api/me`, { headers: { Authorization: `Bearer ${auth.token}` } });
+        return fetch(`${API_BASE}/api/me`, { headers: authHeaders(auth.token) });
       })
       .then(response => response.ok ? response.json() : null)
       .then(data => {
@@ -357,7 +375,10 @@ function App() {
     try { data = await response.json(); } catch (_) {}
     if (!response.ok) {
       const message = data?.error || `Request failed (${response.status})`;
-      throw new Error(message);
+      const error = new Error(message);
+      error.status = response.status;
+      error.data = data;
+      throw error;
     }
     return data;
   }
@@ -382,7 +403,7 @@ function App() {
 
   async function syncAccountState() {
     const [me, locks] = await Promise.all([
-      apiJson("/api/me", { headers: { Authorization: `Bearer ${auth.token}` } }),
+      apiJson("/api/me"),
       apiJson("/api/locks"),
     ]);
     if (!Array.isArray(locks) || !me?.scores) throw new Error("Invalid account state response");
@@ -411,6 +432,10 @@ function App() {
     localStorage.removeItem("ao_token");
     localStorage.removeItem("ao_username");
     localStorage.removeItem(ACTIVE_ATTEMPT_KEY);
+    if (usesHostedIdentity()) {
+      window.location.assign("/signout-with-chatgpt?return_to=%2Fgame%2Findex.html");
+      return;
+    }
     setAuth(null);
     setProfiles(null);
     setScoresByProfile({});
@@ -498,6 +523,28 @@ function App() {
       });
       setPhase(2);
     } catch (err) {
+      if (err?.status === 409 && err?.data?.state === "guessing" && err?.data?.attemptId) {
+        try {
+          await apiJson(`/api/attempts/${encodeURIComponent(err.data.attemptId)}/abandon`, { method: "POST" });
+          const restarted = await apiJson("/api/attempts/start", {
+            method: "POST",
+            body: JSON.stringify({ profileId: selected.id }),
+          });
+          if (!restarted?.attemptId || !Number.isFinite(Date.parse(restarted.startedAt))) {
+            throw new Error("Invalid attempt start response");
+          }
+          setCurrentAttempt({
+            attemptId: restarted.attemptId,
+            profileId: selected.id,
+            stage: "guessing",
+            startedAt: restarted.startedAt,
+          });
+          setPhase(2);
+          return;
+        } catch (recoveryError) {
+          err = recoveryError;
+        }
+      }
       console.error(err);
       setError(err);
     }
@@ -688,6 +735,9 @@ function App() {
   }
 
   const profile = profileIdx !== null ? profiles[profileIdx] : null;
+  const profileLabel = profileIdx !== null
+    ? t("profile.displayName", { number: profileIdx + 1 })
+    : null;
 
 
   if (showLeaderboard) {
@@ -711,7 +761,7 @@ function App() {
             </button>
           </div>
         </header>
-        <LeaderboardScreen username={auth.username} average={average} rank={rank} token={auth.token} />
+        <LeaderboardScreen username={auth.username} average={average} rank={rank} token={auth.token} profiles={profiles} />
       </div>
     );
   }
@@ -796,6 +846,7 @@ function App() {
         ) : (
           <Phase1Profile
             profile={fullProfile || profile}
+            profileLabel={profileLabel}
             profileIdx={profileIdx}
             profileCount={profiles.length}
             canViewCorrectChoices={isPractice && !!fullProfile}
@@ -806,6 +857,7 @@ function App() {
       {phase === 2 && profileIdx !== null && (
         <Phase2Tier
           profile={profile}
+          profileLabel={profileLabel}
           universityTierPick={universityTierPick} setUniversityTierPick={setUniversityTierPick}
           lacTierPick={lacTierPick} setLacTierPick={setLacTierPick}
           noUniClaim={noUniClaim} setNoUniClaim={setNoUniClaim}
@@ -819,6 +871,7 @@ function App() {
       {phase === 3 && profileIdx !== null && (
         <Phase3School
           profile={isPractice ? (fullProfile || profile) : profile}
+          profileLabel={profileLabel}
           universityTierPick={universityTierPick} lacTierPick={lacTierPick}
           noUniClaim={noUniClaim} noLacClaim={noLacClaim}
           schoolSelections={schoolSelections} setSchoolSelections={setSchoolSelections}
@@ -830,6 +883,7 @@ function App() {
       {phase === 4 && profileIdx !== null && (
         <Phase4Results
           profile={fullProfile || profile}
+          profileLabel={profileLabel}
           universityTierPick={universityTierPick} lacTierPick={lacTierPick}
           noUniClaim={noUniClaim} noLacClaim={noLacClaim}
           schoolSelections={schoolSelections} average={average} rank={rank}
@@ -847,7 +901,7 @@ function App() {
   );
 }
 
-function LeaderboardScreen({ username, average, rank, token }) {
+function LeaderboardScreen({ username, average, rank, token, profiles }) {
   const { t, localizeError } = window.I18N.useI18n();
   const [rows, setRows] = React.useState(null);
   const [leaderboardError, setLeaderboardError] = React.useState(null);
@@ -1071,7 +1125,9 @@ function LeaderboardScreen({ username, average, rank, token }) {
                     key={c.profileId}
                     className="leaderboard-grid leaderboard-grid--duel"
                   >
-                    <span className="grow" style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.profileId}</span>
+                    <span className="grow" style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {profileDisplayName(t, profiles, c.profileId)}
+                    </span>
                     <span className="num" style={{ fontWeight: youWin ? 700 : 400, color: youWin ? "var(--accent-ok-fg)" : "inherit" }}>{c.you}</span>
                     <span className="num" style={{ fontWeight: theyWin ? 700 : 400, color: theyWin ? "var(--accent-danger-fg)" : "inherit" }}>{c.them}</span>
                   </div>

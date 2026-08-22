@@ -1,6 +1,6 @@
 // Phase 2 — Tier selection
 
-function ProfileCollapsedSummary({ profile, onExpand }) {
+function ProfileCollapsedSummary({ profile, profileLabel, onExpand }) {
   const { t, translateEnum } = window.I18N.useI18n();
   const d = profile.demographics || {};
   const sat = profile.test_scores?.sat;
@@ -9,7 +9,7 @@ function ProfileCollapsedSummary({ profile, onExpand }) {
   return (
     <div className="profile-collapsed-summary">
       <div className="row">
-        <div className="who">{profile.id}</div>
+        <div className="who">{profileLabel}</div>
         <div className="row" style={{ gap: "var(--sp-1)" }}>
           <span className="chip">{d.gender ? translateEnum("gender", d.gender) : <span className="muted">—</span>}</span>
           <span className="chip">{d.ethnicity || <span className="muted">—</span>}</span>
@@ -52,7 +52,7 @@ function TimeBonusChip({ startedAt }) {
 }
 
 function Phase2Tier({
-  profile,
+  profile, profileLabel,
   universityTierPick, setUniversityTierPick,
   lacTierPick, setLacTierPick,
   noUniClaim, setNoUniClaim,
@@ -67,7 +67,7 @@ function Phase2Tier({
     <div className="fade-in" data-screen-label="02 Tier">
       <Stepper phase={2} />
 
-      <ProfileCollapsedSummary profile={profile} onExpand={onBack} />
+      <ProfileCollapsedSummary profile={profile} profileLabel={profileLabel} onExpand={onBack} />
 
       <div className="section-head">
         <div className="title-block">

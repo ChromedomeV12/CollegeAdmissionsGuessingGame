@@ -165,7 +165,7 @@ function TimeBonusChip({ startedAt }) {
 }
 
 function Phase3School({
-  profile, universityTierPick, lacTierPick, noUniClaim, noLacClaim,
+  profile, profileLabel, universityTierPick, lacTierPick, noUniClaim, noLacClaim,
   schoolSelections, setSchoolSelections, onReveal, onBack,
   isPractice = false, attemptStartedAt = null
 }) {
@@ -186,7 +186,7 @@ function Phase3School({
   return (
     <div className="fade-in" data-screen-label="03 Schools">
       <Stepper phase={3} />
-      <ProfileCollapsedSummary profile={profile} onExpand={onBack} />
+      <ProfileCollapsedSummary profile={profile} profileLabel={profileLabel} onExpand={onBack} />
 
       <div className="section-head">
         <h2>{t("schools.title")}</h2>

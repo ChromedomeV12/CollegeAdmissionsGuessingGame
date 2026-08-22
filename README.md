@@ -137,7 +137,6 @@ Bulk subreddit scraping and arbitrary `--url` imports remain disabled. See [Cons
 - **Reddit public JSON blocking** — verified on 2026-08-19: `www.reddit.com` and `old.reddit.com` returned HTTP 403 from browser and server-side requests. Do not bypass this by exporting personal cookies; use approved API access, a dedicated throwaway test profile for one-off diagnostics, or a reviewed manual workflow.
 - **Development source page** — the local no-build page still uses development CDNs for convenience. Production deployments must run `npm run build`; the build and production smoke gate reject boot-critical third-party dependencies.
 - **Legacy seed consent** — the eight current seed cases predate the new proof flow. Replace them with consented or synthetic cases before a broad public launch.
-- `public/uploads/` still holds early prototype artifacts (`sample.jsonl`, original scraper prompt) — candidates for pruning.
 
 ## Deployment notes
 

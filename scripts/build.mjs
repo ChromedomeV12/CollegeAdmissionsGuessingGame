@@ -5,7 +5,8 @@ import { build, transform } from "esbuild";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PUBLIC = path.join(ROOT, "public");
-const DIST = path.join(ROOT, "dist");
+const outputDirectory = process.env.BUILD_OUTPUT_DIR || "dist";
+const DIST = path.resolve(ROOT, outputDirectory);
 const ASSETS = path.join(DIST, "assets");
 const JSX_FILES = [
   "ui-primitives.jsx",
@@ -17,12 +18,17 @@ const JSX_FILES = [
   "app.jsx",
 ];
 
-if (DIST !== path.join(ROOT, "dist") || !DIST.startsWith(`${ROOT}${path.sep}`)) {
+const allowedOutputs = new Set([
+  path.join(ROOT, "dist"),
+  path.join(ROOT, "site-assets", "game"),
+]);
+if (!allowedOutputs.has(DIST) || !DIST.startsWith(`${ROOT}${path.sep}`)) {
   throw new Error(`Refusing to replace unexpected build directory: ${DIST}`);
 }
 
 fs.rmSync(DIST, { recursive: true, force: true });
 fs.cpSync(PUBLIC, DIST, { recursive: true });
+fs.rmSync(path.join(DIST, "game"), { recursive: true, force: true });
 fs.rmSync(path.join(DIST, "uploads"), { recursive: true, force: true });
 fs.mkdirSync(ASSETS, { recursive: true });
 

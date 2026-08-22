@@ -116,10 +116,15 @@ async function main() {
     HOST: "127.0.0.1",
     PORT: String(port),
     DATA_DIR: testDataDir,
+    // Dev servers now generate a random per-process secret when unset. The
+    // maintainer-gate check spawns a second server that must verify the same
+    // tokens, so pin one shared secret for the whole harness run.
+    JWT_SECRET: productionE2E
+      ? "production-e2e-secret-production-e2e-secret-1234567890"
+      : "development-e2e-secret-development-e2e-secret-123456",
     ...(productionE2E ? {
       NODE_ENV: "production",
       STATIC_DIR: path.join(REPO_DIR, "dist"),
-      JWT_SECRET: "production-e2e-secret-production-e2e-secret-1234567890",
     } : {}),
   };
   log("Using port", port, `(${productionE2E ? "production" : "development"})`);
@@ -381,6 +386,14 @@ async function main() {
 
     await clickTestId("home-play");
     await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: POLL_TIMEOUT_MS });
+    const neutralProfileLabels = await page.$$eval(
+      '[data-screen-label="00 Menu"] .school-card .name',
+      (nodes) => nodes.map((node) => (node.textContent || "").trim()),
+    );
+    assert.deepEqual(neutralProfileLabels, profiles.map((_, index) => `Profile ${index + 1}`));
+    const menuText = await page.$eval('[data-screen-label="00 Menu"]', (screen) => screen.textContent || "");
+    assert.equal(/\b(?:cr_\d|rednote_|rn_\d)/i.test(menuText), false, "menu exposed an internal/source-flavored profile id");
+    log("PASS applicant menu uses neutral sequential profile labels");
     log("PASS Home Play action opened the applicant menu");
 
     // A failed authoritative reveal write must disclose neither answers nor a
@@ -493,16 +506,17 @@ async function main() {
 
     for (let profileIdx = 0; profileIdx < NUM_PROFILES; profileIdx++) {
       await page.waitForSelector('[data-screen-label="00 Menu"] .school-card', { timeout: SHORT_TIMEOUT_MS });
-      const selectedProfileId = await page.evaluate((idx) => {
+      const selectedProfileId = profiles[profileIdx].id;
+      const selectedProfileLabel = await page.evaluate((idx) => {
         const cards = document.querySelectorAll('[data-screen-label="00 Menu"] .school-card');
         const card = cards[idx];
         if (!card) throw new Error(`Profile card ${idx} not found; menu has ${cards.length}`);
-        const id = (card.querySelector(".name")?.textContent || "").trim();
+        const label = (card.querySelector(".name")?.textContent || "").trim();
         card.click();
-        return id;
+        return label;
       }, profileIdx);
-      if (!selectedProfileId || playedProfileIds.has(selectedProfileId)) {
-        throw new Error(`Profile #${profileIdx} was not distinct: "${selectedProfileId}"`);
+      if (selectedProfileLabel !== `Profile ${profileIdx + 1}` || playedProfileIds.has(selectedProfileId)) {
+        throw new Error(`Profile #${profileIdx} was not labeled or identified distinctly: ${JSON.stringify({ selectedProfileId, selectedProfileLabel })}`);
       }
       playedProfileIds.add(selectedProfileId);
       await page.waitForSelector('[data-screen-label="01 Profile"]', { timeout: POLL_TIMEOUT_MS });
@@ -780,8 +794,12 @@ async function main() {
       throw new Error(`Rival was not persisted: ${JSON.stringify(rivalList)}`);
     }
     await clickTestId("duel-open");
-    await page.waitForFunction((profileId) => [...document.querySelectorAll(".leaderboard-grid--duel")]
-      .some((row) => (row.textContent || "").includes(profileId)), { timeout: POLL_TIMEOUT_MS }, profiles[0].id);
+    await page.waitForFunction((displayName) => [...document.querySelectorAll(".leaderboard-grid--duel")]
+      .some((row) => (row.textContent || "").includes(displayName)), { timeout: POLL_TIMEOUT_MS }, "Profile 1");
+    const duelUiText = await page.$eval(".leaderboard-grid--duel", (row) => row.parentElement?.textContent || "");
+    if (!duelUiText.includes("Profile 1") || duelUiText.includes(profiles[0].id)) {
+      throw new Error(`Duel UI did not keep the internal profile id private: ${duelUiText}`);
+    }
     const duel = await fetchJson(port, `/api/duel/${encodeURIComponent(rivalUsername)}`, { token });
     const shared = duel.common?.find((entry) => entry.profileId === profiles[0].id);
     if (!shared || !Number.isInteger(shared.you) || !Number.isInteger(shared.them)) {
