@@ -23,7 +23,6 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node package.json package-lock.json server.js ./
 COPY --chown=node:node lib ./lib
-COPY --chown=node:node public ./public
 COPY --chown=node:node data/profiles.jsonl ./data/profiles.jsonl
 
 USER node

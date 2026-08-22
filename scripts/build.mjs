@@ -29,7 +29,6 @@ if (!allowedOutputs.has(DIST) || !DIST.startsWith(`${ROOT}${path.sep}`)) {
 fs.rmSync(DIST, { recursive: true, force: true });
 fs.cpSync(PUBLIC, DIST, { recursive: true });
 fs.rmSync(path.join(DIST, "game"), { recursive: true, force: true });
-fs.rmSync(path.join(DIST, "uploads"), { recursive: true, force: true });
 fs.mkdirSync(ASSETS, { recursive: true });
 
 const commonBuild = {
