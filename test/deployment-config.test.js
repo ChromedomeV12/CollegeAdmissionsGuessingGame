@@ -9,7 +9,7 @@ const read = (file) => fs.readFileSync(path.join(ROOT, file), "utf8");
 
 test("container release is non-root, health-checked, and reproducibly built", () => {
   const dockerfile = read("Dockerfile");
-  assert.match(dockerfile, /FROM node:22-bookworm-slim AS build/);
+  assert.match(dockerfile, /FROM node:22\.23\.4-bookworm-slim AS build/);
   assert.match(dockerfile, /RUN npm ci/);
   assert.match(dockerfile, /RUN npm run build/);
   assert.match(dockerfile, /npm prune --omit=dev/);

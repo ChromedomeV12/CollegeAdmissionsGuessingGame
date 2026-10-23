@@ -70,8 +70,8 @@
     "qs": "6.16.0",
     "esbuild@<0.28.1": ">=0.28.1",
     "ws": "8.21.3",
-    "esbuild": "$esbuild",
-    "react": "$react",
-    "react-dom": "$react-dom"
+    "esbuild": "^0.28.2",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   }
 }
