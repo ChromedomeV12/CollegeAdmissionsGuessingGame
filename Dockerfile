@@ -1,4 +1,6 @@
-FROM node:22-bookworm-slim AS build
+FROM node:22.23.4-bookworm-slim AS build
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && update-ca-certificates && rm -rf /var/lib/apt/lists/*
 
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 WORKDIR /app
@@ -9,7 +11,9 @@ COPY public ./public
 COPY scripts ./scripts
 RUN npm run build:legacy && npm prune --omit=dev
 
-FROM node:22-bookworm-slim AS runtime
+FROM node:22.23.4-bookworm-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && update-ca-certificates && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
